@@ -280,16 +280,3 @@ bash ~/.local/share/plasma/plasmoids/com.github.exequtic.apdatifier/contents/too
 ```
 
 <br>
-
-## Support the project
-<p>
-  <a href="https://www.buymeacoffee.com/evgk" target="_blank">
-    <img src="https://iili.io/JoQ1MeS.md.png" alt="Buy Me a Coffee" width="200">
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://nowpayments.io/donation/exequtic" target="_blank">
-    <img src="https://nowpayments.io/images/embeds/donation-button-black.svg" alt="NOWPayments" width="200">
-  </a>
-</p>
-
-<br>
