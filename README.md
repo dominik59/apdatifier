@@ -6,7 +6,7 @@ widgets, and firmware updates.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE.md)
 <!-- coverage-badges:start -->
-[![Python coverage: 85.21%](https://img.shields.io/badge/Python%20coverage-85.21%25-brightgreen?style=flat)](#coverage)
+[![Python coverage: 85.52%](https://img.shields.io/badge/Python%20coverage-85.52%25-brightgreen?style=flat)](#coverage)
 [![JavaScript lines: 94.61%](https://img.shields.io/badge/JavaScript%20lines-94.61%25-brightgreen?style=flat)](#coverage)
 <!-- coverage-badges:end -->
 
@@ -128,9 +128,9 @@ Python checks: **PASSED**. JavaScript checks: **PASSED**.
 
 | Metric | Coverage | Minimum | Coverage gate |
 | --- | ---: | ---: | --- |
-| Python: statements and branches | 85.21% | 80% | PASS |
-| Python: statements | 88.82% | Not gated | Not gated |
-| Python: branches | 77.29% | Not gated | Not gated |
+| Python: statements and branches | 85.52% | 80% | PASS |
+| Python: statements | 89.00% | Not gated | Not gated |
+| Python: branches | 77.89% | Not gated | Not gated |
 | JavaScript: lines | 94.61% | 80% | PASS |
 | JavaScript: branches | 75.52% | 70% | PASS |
 | JavaScript: functions | 91.33% | 70% | PASS |

@@ -116,6 +116,51 @@ class AptPlanTests(TemporaryCase):
         self.assertEqual(plan[0]["nativeId"], "example:i386")
         self.assertEqual(plan[0]["candidateVersion"], "1:2.0~rc1-3")
 
+    def test_multiple_dependency_annotations_keep_native_versions_and_architectures(self):
+        installed = {}
+        for name, architectures in (("libsystemd0", ("amd64", "i386")),
+                                     ("libsystemd-shared", ("amd64",)), ("libudev1", ("amd64", "i386"))):
+            for architecture in architectures:
+                identifier = name + ":" + architecture
+                installed[identifier] = b.package_record("apt", identifier, name, "259.5-0ubuntu3.4",
+                                                          architecture=architecture)
+        text = (
+            "Inst libsystemd0:i386 [259.5-0ubuntu3.4] (259.9-0ubuntu0.1 Ubuntu:26.04/resolute-updates [i386])"
+            " [libsystemd0:amd64 on libsystemd0:i386] [libsystemd0:i386 on libsystemd0:amd64] [libsystemd0:amd64 ]\n"
+            "Inst libsystemd-shared [259.5-0ubuntu3.4] (259.9-0ubuntu0.1 Ubuntu:26.04/resolute-updates [amd64])"
+            " [systemd:amd64 on libsystemd-shared:amd64] [udev:amd64 systemd:amd64 ]\n"
+            "Inst libudev1 [259.5-0ubuntu3.4] (259.9-0ubuntu0.1 Ubuntu:26.04/resolute-updates [amd64])"
+            " [libudev1:amd64 on libudev1:i386] [libudev1:i386 on libudev1:amd64] [libudev1:i386 ]\n"
+            "Conf libsystemd0:i386 (259.9-0ubuntu0.1 Ubuntu:26.04/resolute-updates [i386])"
+            " [libsystemd0:amd64 ] []\n")
+        changes = b.parse_simulation(text, installed)
+        self.assertEqual([item["nativeId"] for item in changes],
+                         ["libsystemd0:i386", "libsystemd-shared:amd64", "libudev1:amd64"])
+        self.assertTrue(all(item["installedVersion"] == "259.5-0ubuntu3.4" for item in changes))
+        self.assertTrue(all(item["candidateVersion"] == "259.9-0ubuntu0.1" for item in changes))
+        self.assertTrue(all(" on " not in item["repository"] for item in changes))
+
+    def test_annotated_removals_still_obey_safe_mode_and_operation_exclusions(self):
+        text = "Remv other [1] [example:amd64 on other:amd64] [example:amd64 ]\n"
+        self.runner.run.return_value = completed(stdout=text)
+        for mode, excluded in (("safe", set()), ("full", {"other:amd64"})):
+            with self.subTest(mode=mode), self.assertRaises(b.BackendError) as error:
+                self.apt(mode).plan(INSTALLED, excluded=excluded)
+            self.assertEqual(error.exception.category, "blocked")
+        _, changes = self.apt("full").plan(INSTALLED)
+        self.assertEqual([(item["action"], item["nativeId"]) for item in changes], [("Remv", "other:amd64")])
+
+    def test_malformed_annotations_fail_and_diagnostics_redact_credentials(self):
+        for suffix in (" [example:amd64 ] unexpected", " [example:amd64", " [nested [annotation]]"):
+            with self.subTest(suffix=suffix), self.assertRaises(b.BackendError) as error:
+                b.parse_simulation(UPGRADE.splitlines()[0] + suffix, INSTALLED)
+            self.assertEqual(error.exception.category, "invalid-output")
+        text = "Inst example (2 https://user:secret@example.invalid/repo [amd64]) unsupported"
+        with self.assertRaises(b.BackendError) as error:
+            b.parse_simulation(text, INSTALLED)
+        self.assertIn("Inst example", str(error.exception))
+        self.assertNotIn("secret", str(error.exception))
+
     def test_ambiguous_and_unknown_records_are_not_silently_ignored(self):
         for text in ("Inst example ???", "Remv unknown [1]", "Inst new-package (not-a-version [amd64])"):
             with self.subTest(text=text), self.assertRaises(b.BackendError):
@@ -626,6 +671,31 @@ class NativeAptTests(TemporaryCase):
         return subprocess.run(["apt-get", "-c", str(self.config), *args],
                               text=True, capture_output=True, timeout=30, check=check,
                               env=dict(os.environ, LC_ALL="C", LANGUAGE="C"))
+
+    def test_multiarch_simulation_emits_multiple_annotations_that_remain_parseable(self):
+        installed = {}
+        for architecture in ("amd64", "i386"):
+            metadata = (f"Package: multiarch-library\nArchitecture: {architecture}\nMulti-Arch: same\n"
+                        "Maintainer: Test <test@example.invalid>\nDescription: Multiarch test library\n")
+            with (self.root / "status").open("a") as stream:
+                stream.write(metadata + "Status: install ok installed\nVersion: 1\n\n")
+            indexes = self.repo / ("dists/stable/main/binary-" + architecture)
+            indexes.mkdir(parents=True, exist_ok=True)
+            with (indexes / "Packages").open("a") as stream:
+                stream.write(metadata + "Version: 2\nFilename: library.deb\nSize: 1\n"
+                             "MD5sum: 00000000000000000000000000000000\n\n")
+            identifier = "multiarch-library:" + architecture
+            installed[identifier] = b.package_record("apt", identifier, "multiarch-library", "1",
+                                                      architecture=architecture)
+        with self.config.open("a") as stream:
+            stream.write('#clear APT::Architectures;\nAPT::Architectures { "amd64"; "i386"; };\n')
+        self.native(["--error-on=any", "update"], check=True)
+        result = self.native(["--simulate", "--no-remove", "install", "--only-upgrade", *installed], check=True)
+        self.assertRegex(result.stdout, r"\)(?: \[[^\]]*\]){2,}\n")
+        changes = b.parse_simulation(result.stdout, installed)
+        self.assertEqual({item["nativeId"] for item in changes}, set(installed))
+        self.assertTrue(all(item["candidateVersion"] == "2" for item in changes))
+        self.assertTrue(all(item["action"] == "Inst" for item in changes))
 
     @unittest.skipIf(os.geteuid() == 0, "Root can read mode-000 source files.")
     def test_unreadable_sources_cannot_replace_the_last_complete_result(self):

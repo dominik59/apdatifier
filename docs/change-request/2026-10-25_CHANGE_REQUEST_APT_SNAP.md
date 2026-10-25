@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Request ID | CR-APT-SNAP-001 |
-| Revision | 2.0 |
+| Revision | 2.1 |
 | Date | 2026-10-25 |
 | Product | Apdatifier |
 | Source version | 2.10.0 |
@@ -385,6 +385,10 @@ APT-45. Use --error-on=any for every private APT index refresh.
 APT-46. Keep the previous synchronization time after any refresh error, including a transient error.
 
 APT-47. Do not calculate a new update plan from an incomplete index refresh.
+
+APT-48. Accept repeated native dependency annotations after a valid simulation operation.
+
+APT-49. Include a bounded, credential-redacted record in unknown simulation record diagnostics.
 
 APT recommends apt-get and apt-cache for scripts. [S05]
 Simulation does not lock the system state. [S06]
@@ -979,6 +983,7 @@ Each test must state the tested versions and the observed result.
 | AT-44 | Transient network failures use bounded retries; preferences, native errors, previous results, and empty error states remain correct | NET, DATA |
 | AT-45 | Shell tests complete without terminal input when the developer starts the suite from an interactive terminal | TEST, STEP |
 | AT-46 | Each coverage invocation updates marked README results; failed checks, unavailable reports, unchanged results, and user content retain correct states | TEST, STEP |
+| AT-47 | Multiarch simulation records accept repeated dependency annotations; removal guards, operation exclusions, and malformed-record diagnostics remain effective | APT, EXEC, SAFE |
 
 TEST-01. Use Python unittest for new automated helper tests.
 
@@ -1112,7 +1117,7 @@ An installed Plasma package version does not prove an interactive desktop test.
 | Development QML compiler | Qt 6.10.2 through existing PyQt6 |
 | Development coverage.py | 7.17.0 |
 
-The verification run on 2026-10-25 passed 148 Python tests and 63 JavaScript tests.
+The verification run on 2026-10-25 passed 152 Python tests and 63 JavaScript tests.
 The optional QML check compiled 18 files without errors.
 Python 3.10 syntax checks, shell syntax checks, JSON checks, XML checks, and whitespace checks passed.
 The messages file contains translation data and is excluded from shell syntax checks.
@@ -1197,6 +1202,7 @@ No row below grants complete platform acceptance.
 | AT-44 | Partial | Retry, preference, cancellation, native-code, and diagnostic tests passed. Eighteen QML files compiled. A real desktop sleep and recovery test remains open. |
 | AT-45 | Local pass | A pseudoterminal test reproduced the failure before correction. The complete coverage command then passed with interactive terminal input. |
 | AT-46 | Local pass | Report, threshold, failure, preparation, interruption, marker, preservation, and atomic-write tests passed. The complete coverage command generated README results. |
+| AT-47 | Local pass | Three parser and safety tests and one native APT multiarch fixture passed. The previously rejected real plan parsed 19 updates. |
 
 The complete system matrix in Section 16 remains open.
 Kubuntu, Debian 13, KDE neon, and Arch desktop acceptance was not performed.
@@ -1465,6 +1471,36 @@ Their coverage thresholds and automatic README status updates remain effective.
 The development guide now describes local checks and report locations.
 README results still require an explicit commit and push for publication.
 
+### 17.12 APT multiarch simulation correction on 2026-10-25
+
+The owner reported an unknown APT transaction record during an update check.
+A read-only simulation with the existing private indexes reproduced the error.
+The affected records described systemd and udev packages for amd64 and i386.
+Each record had several dependency annotations after the candidate information.
+The parser accepted only one trailing annotation group.
+
+APT can emit several such groups while it simulates package unpacking. [S31]
+These groups describe dependency states during the simulated sequence.
+They are separate from package identities, candidate versions, and removal operations.
+
+The parser now accepts repeated trailing annotation groups.
+Native names, architectures, versions, and operation records retain their validation.
+Malformed records still stop plan processing.
+Unknown-record diagnostics now include a bounded record after credential redaction.
+Safe-mode removal guards and operation exclusions remain effective.
+
+Three additional parser and safety tests cover the observed records and failure behavior.
+A native fixture creates a temporary multiarch repository and package database.
+APT 3.2.0 produces repeated annotations for that fixture without changing host packages.
+Both the captured-record test and native fixture failed before the correction.
+They passed after the correction.
+
+The captured real plan then parsed 19 installed-package updates.
+The complete coverage command passed 152 Python tests and 63 JavaScript tests.
+The command refreshed README coverage results automatically.
+No system packages were installed or removed during verification.
+The installed applet still needs the corrected helper through the normal package update.
+
 ## 18. Sources
 
 The source review date is 2026-10-24.
@@ -1503,3 +1539,4 @@ The requirements above define the selected product design.
 | S28 | [Qt QNetworkInformation](https://doc.qt.io/qt-6/qnetworkinformation.html#reachability-prop) | Connectivity indications and their limitations; checked on 2026-10-25 |
 | S29 | [Ubuntu apt-secure(8)](https://manpages.ubuntu.com/manpages/resolute/man8/apt-secure.8.html) | Release metadata authentication and native error handling; checked on 2026-10-25 |
 | S30 | [Shields static badges](https://shields.io/badges/static-badge) | Labels, messages, percentage encoding, colors, and flat badge style; checked on 2026-10-25 |
+| S31 | [APT simulation implementation](https://github.com/Debian/apt/blob/main/apt-pkg/algorithms.cc) | Repeated dependency annotations from pkgSimulate::RealInstall and ShortBreaks; checked on 2026-10-25 |

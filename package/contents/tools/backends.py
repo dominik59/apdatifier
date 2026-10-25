@@ -290,17 +290,18 @@ def package_description(record):
 
 
 def parse_simulation(text, installed):
-    """Read documented Inst/Remv/Conf records; never interpret prose as a plan."""
+    """Read Inst/Remv/Conf records, including repeated dependency annotations."""
     changes = []
     for line in text.splitlines():
         if not re.match(r"^(Inst|Remv|Conf)\s", line):
             continue
         match = re.fullmatch(
             r"(Inst|Remv|Conf) ([a-z0-9][a-z0-9+.\-]*(?::[a-z0-9-]+)?)"
-            r"(?: \[([^\]]+)\])?(?: \((.+)\))?(?: \[[^\]]*\])?", line,
+            r"(?: \[([^\]]+)\])?(?: \((.+)\))?(?: \[[^\]]*\])*", line,
         )
         if not match:
-            raise BackendError(_("The APT transaction contains an unknown record."), "invalid-output")
+            raise BackendError(_("The APT transaction contains an unknown record.") + "\n" + redact(line)[:500],
+                               "invalid-output")
         action, identifier, old, details = match.groups()
         if action == "Conf":
             continue
