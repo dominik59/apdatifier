@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Request ID | CR-APT-SNAP-001 |
-| Revision | 1.8 |
+| Revision | 1.9 |
 | Date | 2026-10-25 |
 | Product | Apdatifier |
 | Source version | 2.10.0 |
@@ -977,6 +977,7 @@ Each test must state the tested versions and the observed result.
 | AT-43 | Development checks enforce documented coverage thresholds and save reports without additional application dependencies | SCOPE, STEP |
 | AT-44 | Transient network failures use bounded retries; preferences, native errors, previous results, and empty error states remain correct | NET, DATA |
 | AT-45 | Shell tests complete without terminal input when the developer starts the suite from an interactive terminal | TEST, STEP |
+| AT-46 | Each coverage invocation updates marked README results; failed checks, unavailable reports, unchanged results, and user content retain correct states | TEST, STEP |
 
 TEST-01. Use Python unittest for new automated helper tests.
 
@@ -1025,6 +1026,16 @@ TEST-18. Make sure that no dependent APT install or upgrade starts after that fo
 TEST-19. Include valid and invalid field combinations in native-selector tests.
 
 TEST-20. Do a separate check of the final subprocess argument list in native-selector tests.
+
+TEST-21. Update the README coverage status after each normal or handled interrupted coverage invocation.
+
+TEST-22. Use only current invocation reports for that status.
+
+TEST-23. Keep test results separate from coverage threshold results.
+
+TEST-24. Keep README content outside the coverage markers unchanged.
+
+TEST-25. Publish README updates through an explicit Git commit and push.
 
 ## 17. Delivery and completion
 
@@ -1100,7 +1111,7 @@ An installed Plasma package version does not prove an interactive desktop test.
 | Development QML compiler | Qt 6.10.2 through existing PyQt6 |
 | Development coverage.py | 7.17.0 |
 
-The verification run on 2026-10-25 passed 128 Python tests and 63 JavaScript tests.
+The verification run on 2026-10-25 passed 148 Python tests and 63 JavaScript tests.
 The optional QML check compiled 18 files without errors.
 Python 3.10 syntax checks, shell syntax checks, JSON checks, XML checks, and whitespace checks passed.
 The messages file contains translation data and is excluded from shell syntax checks.
@@ -1184,6 +1195,7 @@ No row below grants complete platform acceptance.
 | AT-43 | Local pass | Both coverage gates passed. Deliberately higher thresholds failed. HTML, XML, JSON, and LCOV reports were generated. |
 | AT-44 | Partial | Retry, preference, cancellation, native-code, and diagnostic tests passed. Eighteen QML files compiled. A real desktop sleep and recovery test remains open. |
 | AT-45 | Local pass | A pseudoterminal test reproduced the failure before correction. The complete coverage command then passed with interactive terminal input. |
+| AT-46 | Local pass | Report, threshold, failure, preparation, interruption, marker, preservation, and atomic-write tests passed. The complete coverage command generated README results. |
 
 The complete system matrix in Section 16 remains open.
 Kubuntu, Debian 13, KDE neon, and Arch desktop acceptance was not performed.
@@ -1399,6 +1411,47 @@ It passed 128 Python tests and 63 JavaScript tests.
 The application coverage percentages in Section 17.8 remain unchanged.
 This correction changes test files and documentation only.
 
+### 17.10 Automatic README coverage status on 2026-10-25
+
+The owner approved automatic local README updates after each coverage invocation.
+The owner selected normal Git commit and push for publication.
+The coverage command does not commit or push changes itself.
+
+The standard-library script tests/update_coverage_readme.py reads the Python JSON and JavaScript LCOV reports.
+The command removes earlier copies of those two reports before preparation.
+The generator rejects missing, incomplete, or invalid reports.
+An unavailable source does not remove the other source's valid measurements.
+Python uses combined statement and branch coverage for its main badge.
+JavaScript uses line coverage for its main badge.
+The detailed table includes all six measurements and their applicable thresholds.
+
+Python thresholds come from .coveragerc.
+JavaScript thresholds use the same shell variables as the native Node.js coverage options.
+The generator respects Python report precision and the exact 100% requirement.
+The badges use static Shields URLs with generated percentages. [S30]
+Report generation does not contact Shields or upload coverage data.
+README viewers request the badge images when they display the page.
+
+The README has separate coverage-badges and coverage-summary marker pairs.
+The generator replaces only their contents.
+An atomic replacement preserves other content, line endings, and file permissions.
+Identical results leave the README file unchanged.
+Invalid markers stop publication without overwriting user text.
+
+The summary distinguishes PASSED, FAILED, NOT RUN, and INTERRUPTED states.
+A high coverage percentage does not hide failed checks.
+Preparation failures show unavailable current measurements.
+Normal exits and handled SIGINT or SIGTERM update the status through an exit handler.
+If publication fails, the command keeps the original failure or returns a nonzero result.
+Publication requires an available Python interpreter and a writable README.
+Forced termination that bypasses exit handlers cannot publish a new status.
+
+Twenty additional Python tests cover generation and command integration.
+The command passed 148 Python tests and 63 JavaScript tests with terminal input attached.
+The application coverage percentages in Section 17.8 remain unchanged.
+The measured application scope remains backends.py and tools.js.
+No Bash line coverage or QML execution coverage is added.
+
 ## 18. Sources
 
 The source review date is 2026-10-24.
@@ -1436,3 +1489,4 @@ The requirements above define the selected product design.
 | S27 | [pip install](https://pip.pypa.io/en/stable/cli/pip_install/) | Requirement checks with --dry-run and --no-index; checked on 2026-10-25 |
 | S28 | [Qt QNetworkInformation](https://doc.qt.io/qt-6/qnetworkinformation.html#reachability-prop) | Connectivity indications and their limitations; checked on 2026-10-25 |
 | S29 | [Ubuntu apt-secure(8)](https://manpages.ubuntu.com/manpages/resolute/man8/apt-secure.8.html) | Release metadata authentication and native error handling; checked on 2026-10-25 |
+| S30 | [Shields static badges](https://shields.io/badges/static-badge) | Labels, messages, percentage encoding, colors, and flat badge style; checked on 2026-10-25 |

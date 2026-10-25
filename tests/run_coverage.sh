@@ -7,6 +7,41 @@ test_venv="${APDATIFIER_TEST_VENV:-.venv}"
 test_node="${APDATIFIER_TEST_NODE:-node}"
 export PYTHONDONTWRITEBYTECODE=1
 
+test_report_python="$test_base_python"
+test_phase=preparation
+test_python_status=not-run
+test_javascript_status=not-run
+test_interrupted=false
+test_javascript_lines=80
+test_javascript_branches=70
+test_javascript_functions=70
+
+update_readme() {
+    local test_exit_status=$?
+    trap - EXIT INT TERM
+    set +e
+    local test_report_flags=()
+    [[ "$test_interrupted" == true ]] && test_report_flags+=(--interrupted)
+    "$test_report_python" tests/update_coverage_readme.py \
+        --exit-code "$test_exit_status" --phase "$test_phase" \
+        --python-status "$test_python_status" --javascript-status "$test_javascript_status" \
+        --javascript-thresholds "$test_javascript_lines" "$test_javascript_branches" "$test_javascript_functions" \
+        "${test_report_flags[@]}"
+    local test_report_status=$?
+    if [[ "$test_report_status" -ne 0 ]]; then
+        printf 'README coverage status could not be fully updated.\n' >&2
+        [[ "$test_exit_status" -eq 0 ]] && test_exit_status=1
+    fi
+    exit "$test_exit_status"
+}
+trap update_readme EXIT
+trap 'test_interrupted=true; exit 130' INT
+trap 'test_interrupted=true; exit 143' TERM
+
+# Only reports produced by this invocation may be published in the README.
+mkdir -p coverage
+rm -f -- coverage/python.json coverage/javascript.lcov
+
 "$test_node" -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && minor < 8)) { console.error("Coverage needs Node.js 22.8 or later."); process.exit(2); }'
 
 if [[ ! -e "$test_venv" ]]; then
@@ -21,6 +56,7 @@ if [[ ! -x "$test_python" || ! -f "$test_venv/pyvenv.cfg" ]]; then
     exit 2
 fi
 "$test_python" -c 'import sys; sys.exit(0 if sys.prefix != sys.base_prefix and sys.version_info >= (3, 11) else "Coverage needs a Python 3.11+ virtual environment.")'
+test_report_python="$test_python"
 
 if ! "$test_python" -m pip --version >/dev/null 2>&1; then
     "$test_python" -m ensurepip --upgrade
@@ -31,18 +67,34 @@ if ! "$test_python" -m pip install --dry-run --no-index --disable-pip-version-ch
     "$test_python" -m pip install --disable-pip-version-check -r requirements-test.txt
 fi
 
-mkdir -p coverage
 "$test_python" -m coverage erase
 test_status=0
-"$test_python" -m coverage run -m unittest discover -s tests -v || test_status=1
+test_phase=python
+test_python_status=failed
+if "$test_python" -m coverage run -m unittest discover -s tests -v; then
+    test_python_status=passed
+else
+    test_status=1
+fi
 for report in html xml json report; do
-    "$test_python" -m coverage "$report" || test_status=1
+    if ! "$test_python" -m coverage "$report"; then
+        test_python_status=failed
+        test_status=1
+    fi
 done
 
-"$test_node" --test --experimental-test-coverage \
+test_phase=javascript
+test_javascript_status=failed
+if "$test_node" --test --experimental-test-coverage \
     --test-coverage-include=package/contents/tools/tools.js \
-    --test-coverage-lines=80 --test-coverage-branches=70 --test-coverage-functions=70 \
+    --test-coverage-lines="$test_javascript_lines" \
+    --test-coverage-branches="$test_javascript_branches" --test-coverage-functions="$test_javascript_functions" \
     --test-reporter=spec --test-reporter-destination=stdout \
     --test-reporter=lcov --test-reporter-destination=coverage/javascript.lcov \
-    tests/test_*.js || test_status=1
+    tests/test_*.js; then
+    test_javascript_status=passed
+else
+    test_status=1
+fi
+test_phase=complete
 exit "$test_status"

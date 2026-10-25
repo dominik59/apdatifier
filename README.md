@@ -13,6 +13,11 @@
 ![Downloads](https://img.shields.io/github/downloads/exequtic/apdatifier/total?style=flat&logo=kdeplasma&logoColor=white&label=Downloads&color=red)&nbsp;&nbsp;
 ![Stars](https://img.shields.io/github/stars/exequtic/apdatifier?style=flat&logo=github&logoColor=white&label=Stars&color=blue)
 
+<!-- coverage-badges:start -->
+[![Python coverage: 85.21%](https://img.shields.io/badge/Python%20coverage-85.21%25-brightgreen?style=flat)](#coverage)
+[![JavaScript lines: 94.61%](https://img.shields.io/badge/JavaScript%20lines-94.61%25-brightgreen?style=flat)](#coverage)
+<!-- coverage-badges:end -->
+
 <br>
 
 </div>
@@ -166,6 +171,32 @@ blocking the suite. A regression test uses a pseudoterminal to check this behavi
 when tests run from an interactive developer terminal.
 
 ### Coverage
+
+<!-- coverage-summary:start -->
+Last coverage run: **PASSED**.
+
+Python checks: **PASSED**. JavaScript checks: **PASSED**.
+
+| Metric | Coverage | Minimum | Coverage gate |
+| --- | ---: | ---: | --- |
+| Python: statements and branches | 85.21% | 80% | PASS |
+| Python: statements | 88.82% | Not gated | Not gated |
+| Python: branches | 77.29% | Not gated | Not gated |
+| JavaScript: lines | 94.61% | 80% | PASS |
+| JavaScript: branches | 75.52% | 70% | PASS |
+| JavaScript: functions | 91.33% | 70% | PASS |
+
+Measured scope: `package/contents/tools/backends.py` and `package/contents/tools/tools.js`.
+<!-- coverage-summary:end -->
+
+Each invocation of `./tests/run_coverage.sh` updates the badges and table above
+from that run's reports, including failed checks. Missing results are unavailable;
+they do not reuse an earlier percentage. Identical results keep README unchanged.
+The run status includes tests, report generation, and coverage gates.
+
+The script updates only the marked README sections. Commit and push README to
+publish the results on GitHub. Running the script does not commit, push, or upload
+reports to an external coverage service. Badge images use Shields, as above.
 
 Coverage uses Python 3.11 or later with venv support and Node.js 22.8 or later.
 Run both suites with one command:

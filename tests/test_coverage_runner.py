@@ -19,12 +19,17 @@ class CoverageRunnerTests(unittest.TestCase):
         self.script = self.root / "tests/run_coverage.sh"
         source = Path(__file__).resolve().parent / "run_coverage.sh"
         shutil.copy2(source, self.script)
+        shutil.copy2(source.with_name("update_coverage_readme.py"), self.script.with_name("update_coverage_readme.py"))
+        shutil.copy2(source.parents[1] / ".coveragerc", self.root / ".coveragerc")
+        self.readme = self.root / "README.md"
+        self.readme.write_text('# Test project\n\n<!-- coverage-badges:start -->\n<!-- coverage-badges:end -->\n'
+                               '\n## Coverage\n\n<!-- coverage-summary:start -->\n<!-- coverage-summary:end -->\n')
         self.requirements = self.root / "requirements-test.txt"
         self.requirements.write_text("coverage==7.17.0\n")
         self.log = self.root / "commands.jsonl"
         self.base = self.root / "base python"
         self.base.write_text(r'''#!/usr/bin/python3
-import json, os, pathlib, shutil, sys
+import json, os, pathlib, shutil, signal, sys
 args = sys.argv[1:]
 with open(os.environ['APDATIFIER_BOOTSTRAP_LOG'], 'a') as stream:
     stream.write(json.dumps({'program': str(pathlib.Path(sys.argv[0]).resolve()), 'args': args}) + '\n')
@@ -52,23 +57,41 @@ elif args[:2] == ['-m', 'pip']:
     if os.environ.get('APDATIFIER_BOOTSTRAP_INSTALL_FAIL'):
         sys.exit(7)
     installed.write_text(requirements)
+elif args[:1] == ['tests/update_coverage_readme.py']:
+    os.execv('/usr/bin/python3', ['/usr/bin/python3', *args])
+elif args[:3] == ['-m', 'coverage', 'json']:
+    if os.environ.get('APDATIFIER_BOOTSTRAP_REPORT_FAIL'):
+        sys.exit(6)
+    if not os.environ.get('APDATIFIER_BOOTSTRAP_NO_REPORTS'):
+        pathlib.Path('coverage/python.json').write_text(json.dumps({
+            'meta': {'branch_coverage': True},
+            'totals': {'covered_lines': 90, 'num_statements': 100, 'covered_branches': 18, 'num_branches': 20}}))
 elif args[:3] == ['-m', 'coverage', 'run']:
+    if os.environ.get('APDATIFIER_BOOTSTRAP_INTERRUPT'):
+        os.kill(os.getppid(), signal.SIGTERM)
+        sys.exit(143)
     sys.exit(int(os.environ.get('APDATIFIER_BOOTSTRAP_TEST_EXIT', '0')))
 ''')
         self.base.chmod(0o700)
         self.node = self.root / "test node"
         self.node.write_text(r'''#!/usr/bin/python3
-import json, os, sys
+import json, os, pathlib, sys
 with open(os.environ['APDATIFIER_BOOTSTRAP_LOG'], 'a') as stream:
     stream.write(json.dumps({'program': 'node', 'args': sys.argv[1:]}) + '\n')
 if sys.argv[1] == '-e' and os.environ.get('APDATIFIER_BOOTSTRAP_OLD_NODE'):
     sys.exit(2)
+if sys.argv[1] == '--test':
+    if not os.environ.get('APDATIFIER_BOOTSTRAP_NO_REPORTS'):
+        pathlib.Path('coverage/javascript.lcov').write_text('SF:package/contents/tools/tools.js\n'
+            'LF:100\nLH:90\nBRF:10\nBRH:8\nFNF:10\nFNH:9\nend_of_record\n')
+    sys.exit(int(os.environ.get('APDATIFIER_BOOTSTRAP_NODE_TEST_EXIT', '0')))
 ''')
         self.node.chmod(0o700)
         self.env = dict(os.environ, APDATIFIER_TEST_PYTHON=str(self.base), APDATIFIER_TEST_NODE=str(self.node),
                         APDATIFIER_BOOTSTRAP_LOG=str(self.log))
         for key in ("APDATIFIER_TEST_VENV", "APDATIFIER_BOOTSTRAP_CREATE_FAIL", "APDATIFIER_BOOTSTRAP_INSTALL_FAIL",
-                    "APDATIFIER_BOOTSTRAP_OLD_NODE", "APDATIFIER_BOOTSTRAP_TEST_EXIT"):
+                    "APDATIFIER_BOOTSTRAP_OLD_NODE", "APDATIFIER_BOOTSTRAP_TEST_EXIT", "APDATIFIER_BOOTSTRAP_REPORT_FAIL",
+                    "APDATIFIER_BOOTSTRAP_NO_REPORTS", "APDATIFIER_BOOTSTRAP_NODE_TEST_EXIT", "APDATIFIER_BOOTSTRAP_INTERRUPT"):
             self.env.pop(key, None)
 
     def invoke(self):
@@ -82,9 +105,15 @@ if sys.argv[1] == '-e' and os.environ.get('APDATIFIER_BOOTSTRAP_OLD_NODE'):
                 if (entry := json.loads(line))["args"][:len(prefix)] == prefix]
 
     def test_fresh_environment_is_created_and_reused_without_reinstalling(self):
+        previous_mtime = None
         for _ in range(2):
             result = self.invoke()
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('Last coverage run: **PASSED**', self.readme.read_text())
+            self.assertIn('| Python: statements and branches | 90.00%', self.readme.read_text())
+            if previous_mtime is not None:
+                self.assertEqual(self.readme.stat().st_mtime_ns, previous_mtime)
+            previous_mtime = self.readme.stat().st_mtime_ns
         self.assertEqual(len(self.commands(["-m", "venv"])), 1)
         installs = [entry for entry in self.commands(["-m", "pip", "install"]) if "--dry-run" not in entry["args"]]
         self.assertEqual(len(installs), 1)
@@ -117,6 +146,7 @@ if sys.argv[1] == '-e' and os.environ.get('APDATIFIER_BOOTSTRAP_OLD_NODE'):
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                 self.assertEqual(self.commands(["-m", "coverage", "run"]), [])
                 self.assertEqual(self.commands(["--test"]), [])
+                self.assertIn('Last coverage run: **NOT RUN**', self.readme.read_text())
                 self.env.pop(variable)
 
     def test_incomplete_existing_environment_is_preserved(self):
@@ -128,6 +158,7 @@ if sys.argv[1] == '-e' and os.environ.get('APDATIFIER_BOOTSTRAP_OLD_NODE'):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(note.read_text(), "existing data")
         self.assertEqual(self.commands(["-m", "venv"]), [])
+        self.assertIn('Last coverage run: **NOT RUN**', self.readme.read_text())
 
     def test_missing_pip_is_repaired_only_inside_the_environment(self):
         self.assertEqual(self.invoke().returncode, 0)
@@ -141,6 +172,7 @@ if sys.argv[1] == '-e' and os.environ.get('APDATIFIER_BOOTSTRAP_OLD_NODE'):
         self.env["APDATIFIER_BOOTSTRAP_OLD_NODE"] = "true"
         self.assertEqual(self.invoke().returncode, 2)
         self.assertEqual(self.commands(["-m", "venv"]), [])
+        self.assertIn('Last coverage run: **NOT RUN**', self.readme.read_text())
 
     def test_failed_tests_still_generate_reports_and_run_javascript(self):
         self.env["APDATIFIER_BOOTSTRAP_TEST_EXIT"] = "1"
@@ -148,6 +180,48 @@ if sys.argv[1] == '-e' and os.environ.get('APDATIFIER_BOOTSTRAP_OLD_NODE'):
         for report in ("html", "xml", "json", "report"):
             self.assertEqual(len(self.commands(["-m", "coverage", report])), 1)
         self.assertEqual(len(self.commands(["--test"])), 1)
+        self.assertIn('Last coverage run: **FAILED**', self.readme.read_text())
+        self.assertIn('Python checks: **FAILED**. JavaScript checks: **PASSED**.', self.readme.read_text())
+
+    def test_javascript_failure_keeps_current_percentages_and_a_failed_run(self):
+        self.env["APDATIFIER_BOOTSTRAP_NODE_TEST_EXIT"] = "1"
+        self.assertEqual(self.invoke().returncode, 1)
+        self.assertIn('Last coverage run: **FAILED**', self.readme.read_text())
+        self.assertIn('Python checks: **PASSED**. JavaScript checks: **FAILED**.', self.readme.read_text())
+        self.assertIn('| JavaScript: lines | 90.00%', self.readme.read_text())
+
+    def test_previous_reports_cannot_supply_missing_current_results(self):
+        self.assertEqual(self.invoke().returncode, 0)
+        self.env["APDATIFIER_BOOTSTRAP_NO_REPORTS"] = "true"
+        self.assertEqual(self.invoke().returncode, 1)
+        text = self.readme.read_text()
+        self.assertIn('Last coverage run: **FAILED**', text)
+        self.assertNotIn('90.00%', text)
+        self.assertIn('| JavaScript: lines | Unavailable', text)
+        self.assertIn('| Python: statements and branches | Unavailable', text)
+
+    def test_report_failure_still_runs_javascript_and_updates_the_readme(self):
+        self.env["APDATIFIER_BOOTSTRAP_REPORT_FAIL"] = "true"
+        self.assertEqual(self.invoke().returncode, 1)
+        self.assertEqual(len(self.commands(["--test"])), 1)
+        self.assertIn('Python coverage report is missing or invalid.', self.readme.read_text())
+        self.assertIn('| JavaScript: lines | 90.00%', self.readme.read_text())
+
+    def test_interruption_updates_the_readme_and_preserves_the_signal_exit_code(self):
+        self.env["APDATIFIER_BOOTSTRAP_INTERRUPT"] = "true"
+        self.assertEqual(self.invoke().returncode, 143)
+        self.assertIn('Last coverage run: **INTERRUPTED**', self.readme.read_text())
+        self.assertEqual(self.commands(["--test"]), [])
+
+    def test_invalid_readme_markers_fail_without_overwriting_user_text(self):
+        self.readme.write_text('Keep this README.\n')
+        self.env['APDATIFIER_BOOTSTRAP_CREATE_FAIL'] = 'true'
+        self.assertEqual(self.invoke().returncode, 3)
+        self.env.pop('APDATIFIER_BOOTSTRAP_CREATE_FAIL')
+        result = self.invoke()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.readme.read_text(), 'Keep this README.\n')
+        self.assertIn('README needs one matching', result.stderr)
 
 
 if __name__ == "__main__":
