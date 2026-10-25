@@ -77,7 +77,7 @@ The script writes these ignored reports, with paths relative to the repository r
 | Python XML | `coverage/python.xml` |
 | Python JSON | `coverage/python.json` |
 | JavaScript LCOV | `coverage/javascript.lcov` |
-| Test results and coverage summaries | Terminal output and GitHub Actions logs |
+| Test results and coverage summaries | Terminal output |
 
 [.coveragerc](../.coveragerc) enforces 80% combined statement and branch coverage
 for `package/contents/tools/backends.py`. JavaScript requires 80% lines, 70%
@@ -115,12 +115,11 @@ Shell tests disconnect child standard input so terminal prompts do not block the
 suite. A regression test uses a pseudoterminal to verify this behavior when a
 developer starts the suite from an interactive terminal.
 
-## Continuous integration and acceptance
+## Local checks and acceptance
 
-The [test workflow](../.github/workflows/tests.yml) selects Python 3.12 and 3.14
-with Node.js 24. It uploads coverage reports after success or failure.
-The [release workflow](../.github/workflows/build.yml) uses the same coverage
-command before packaging.
+Run `./tests/run_coverage.sh` locally before sharing changes. The owner removed
+the GitHub Actions test and release workflows. Coverage reports remain local,
+and README results are published through an explicit commit and push.
 
 Full desktop, package-manager, and distribution acceptance remains separate.
 Real privileged APT and Snap operations require acceptance in approved disposable

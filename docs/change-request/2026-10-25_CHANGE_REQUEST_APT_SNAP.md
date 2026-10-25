@@ -3,13 +3,14 @@
 | Field | Value |
 | --- | --- |
 | Request ID | CR-APT-SNAP-001 |
-| Revision | 1.9 |
+| Revision | 2.0 |
 | Date | 2026-10-25 |
 | Product | Apdatifier |
 | Source version | 2.10.0 |
 | Source commit | e971e7c3ff568e061b5ff8d066411135dc4c7219 |
 | Status | Implemented; full platform acceptance remains open |
 | Product source changes | Owner approved implementation on 2026-10-24 |
+| Automated checks | Local commands; owner requested removal of GitHub Actions workflows |
 | Document language | English |
 | Language reference | ASD-STE100, Issue 9, 2025-01-15 |
 | Language review | Structure review complete; full dictionary review open |
@@ -907,7 +908,7 @@ STEP-11. Add management menus without fzf.
 
 STEP-12. Add settings, interface actions, and translations.
 
-STEP-13. Add automated tests and applicable CI steps.
+STEP-13. Keep automated tests available through local development commands.
 
 STEP-14. Change README.md and package descriptions to include the new functions.
 
@@ -1451,6 +1452,18 @@ The command passed 148 Python tests and 63 JavaScript tests with terminal input 
 The application coverage percentages in Section 17.8 remain unchanged.
 The measured application scope remains backends.py and tools.js.
 No Bash line coverage or QML execution coverage is added.
+
+### 17.11 Removal of repository pipelines on 2026-10-25
+
+The owner requested removal of the repository pipelines.
+The test and coverage workflow and the release build workflow were removed.
+This decision replaces the earlier CI part of STEP-13.
+Earlier workflow descriptions in this document remain historical implementation evidence.
+
+The local test suites and ./tests/run_coverage.sh remain available.
+Their coverage thresholds and automatic README status updates remain effective.
+The development guide now describes local checks and report locations.
+README results still require an explicit commit and push for publication.
 
 ## 18. Sources
 
