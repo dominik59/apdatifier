@@ -116,6 +116,23 @@ SimpleKCM {
         }
 
         RowLayout {
+            Kirigami.FormData.label: i18n("Administrator command") + ":"
+            enabled: pkg.pacman || pkg.apt || pkg.snap || pkg.fwupdmgr
+            TextField { id: sudoBin }
+        }
+
+        RowLayout {
+            Kirigami.FormData.label: i18n("Reboot system") + ":"
+            CheckBox {
+                id: rebootSystem
+                text: i18n("Suggest after upgrading")
+            }
+            Kirigami.ContextualHelpButton {
+                toolTipText: i18n("APT uses the system restart request when available. Arch checks changes to critical packages.")
+            }
+        }
+
+        RowLayout {
             CheckBox {
                 id: termFont
                 text: i18n("Use NerdFont icons")
@@ -320,33 +337,6 @@ SimpleKCM {
 
         Item {
             Kirigami.FormData.isSection: true
-        }
-
-        RowLayout {
-            Kirigami.FormData.label: "sudobin:"
-            spacing: 0
-            enabled: pkg.pacman
-
-            TextField {
-                id: sudoBin
-            }
-        }
-
-        Item {
-            Kirigami.FormData.isSection: true
-        }
-
-        RowLayout {
-            Kirigami.FormData.label: i18n("Reboot system") + ":"
-
-            CheckBox {
-                id: rebootSystem
-                text: i18n("Suggest after upgrading")
-            }
-
-            Kirigami.ContextualHelpButton {
-                toolTipText: i18n("This option suggests restarting the system after upgrading critical packages.<br><br><b>Note that not all critical packages require a full system restart; some may only need a session restart or no action at all, such as when an updated package is not currently running (e.g., an alternative kernel) or not in use (e.g., an alternative driver).</b>")
-            }
         }
 
         Kirigami.Separator {

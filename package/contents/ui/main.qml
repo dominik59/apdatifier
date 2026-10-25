@@ -67,6 +67,8 @@ PlasmoidItem {
         property var errors: []
         property int count: 0
         property double lastCheck: 0
+        property double retryAt: 0
+        property int retryAttempts: 0
         property bool busy: true
         property bool upgrading: false
         property bool error: !busy && errors.length > 0
@@ -75,6 +77,9 @@ PlasmoidItem {
         property string statusIco: ""
         property string checkTimeTooltip: ""
         property var proc: null
+        property string checkId: ""
+        property string transactionId: ""
+        property int completedStageCount: 0
     }
 
     ListModel  {
@@ -109,7 +114,7 @@ PlasmoidItem {
         PlasmaCore.Action {
             text: i18n("Management")
             icon.name: "tools"
-            enabled: cfg.terminal && pkg.pacman
+            enabled: cfg.terminal && (pkg.pacman || pkg.apt || pkg.snap)
             onTriggered: JS.management()
         }
     ]
@@ -133,6 +138,13 @@ PlasmoidItem {
         id: saveTimer
         interval: 1000
         onTriggered: JS.saveConfig()
+    }
+
+    Timer {
+        interval: 60000
+        repeat: true
+        running: sts.init && !sts.busy && (cfg.apt || cfg.snap)
+        onTriggered: JS.reconcileInstalled()
     }
 
     onIsOnlineChanged: (!isOnline && sts.proc) && JS.stopCheck()

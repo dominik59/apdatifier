@@ -7,7 +7,7 @@
             }
         ],
         "Category": "System Information",
-        "Description": "Arch Update Notifier",
+        "Description": "Package Update Notifier",
         "Icon": "apdatifier-plasmoid",
         "Id": "com.github.exequtic.apdatifier",
         "Name": "Apdatifier",

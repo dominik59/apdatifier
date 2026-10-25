@@ -2,6 +2,15 @@
 
 source "$(dirname "$0")/utils"
 
+if [[ "$1" != "--legacy" && -x /usr/bin/python3 ]]; then
+    exec /usr/bin/python3 -I -B "$scriptDir/../backends.py" management "$@"
+fi
+
+legacySource=""
+if [[ "$1" == "--legacy" ]]; then
+    legacySource="$2"
+    shift 2
+fi
 [ "$1" ] && selected="$1" || selected=0
 
 if [[ $aur != true || -z $wrapper ]]; then
@@ -578,6 +587,16 @@ clear_screen() {
 }
 
 main() {
+    if [[ "$legacySource" == "flatpak" ]]; then
+        select operation in "Browse available" "Manage installed" "Return"; do
+            case "$REPLY" in
+                1) flatpakFlathub;;
+                2) flatpakInstalled;;
+                3) return;;
+            esac
+        done
+        return
+    fi
     ((BASH_VERSINFO[0] > 3)) && read_flags=(-t 0.05)
 
     trap '' SIGINT

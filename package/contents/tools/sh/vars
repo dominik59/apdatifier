@@ -21,7 +21,11 @@ while IFS= read -r line; do
     key="${key%% *}"
     value="${line#*=}"
     text=$(echo "$value" | grep -oP '(?<=\().*(?=\))' | sed 's/"//g')
-    [[ -n "$key" && -n "$text" ]] && eval "$key=\"\$(gettext \"$text\")\""
+    if [[ -n "$key" && -n "$text" ]]; then
+        translated="$text"
+        if command -v gettext >/dev/null; then translated=$(gettext "$text"); fi
+        printf -v "$key" '%s' "$translated"
+    fi
 done < "$scriptDir/messages"
 
 if [[ $termFont = "true" ]]; then

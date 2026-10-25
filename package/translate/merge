@@ -59,6 +59,11 @@ xgettext \
 	|| \
 	{ echo "[merge] error while calling xgettext. aborting."; exit 1; }
 
+xgettext ${potArgs} --language=Python --join-existing -k_ -kgettext \
+    --package-name="${widgetName}" --msgid-bugs-address="${bugAddress}" \
+    -o "template.pot.new" "${DIR}/../contents/tools/backends.py" \
+    || { echo "[merge] error while extracting Python messages."; exit 1; }
+
 sed -i 's/"Content-Type: text\/plain; charset=CHARSET\\n"/"Content-Type: text\/plain; charset=UTF-8\\n"/' "template.pot.new"
 sed -i 's/# SOME DESCRIPTIVE TITLE./'"# Translation of ${widgetName} in LANGUAGE"'/' "template.pot.new"
 sed -i 's/# Copyright (C) YEAR THE PACKAGE'"'"'S COPYRIGHT HOLDER/'"# Copyright (C) $(date +%Y)"'/' "template.pot.new"

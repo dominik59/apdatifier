@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 UPGRADE_PROGRESS         = i18n("Upgrade in progress")
+UPGRADE_ARGUMENTS        = i18n("Invalid quoted command arguments.")
 UPGRADE_FULL_ARCH        = i18n("Full system upgrade")
 UPGRADE_FULL_FLATPAK     = i18n("Flatpak Upgrade")
 UPGRADE_FULL_WIDGETS     = i18n("Plasma Widgets Upgrade")
@@ -12,6 +13,8 @@ UPGRADE_REBOOTING        = i18n("The system is going to reboot now...")
 UPGRADE_ENTER            = i18n("Press Enter to close")
 UPGRADE_SKIPPED          = i18n("Skipped...")
 UPGRADE_COMPLETE         = i18n("Upgrade complete, close the terminal")
+UPGRADE_RESULT           = i18n("Review the operation results in the terminal")
+UPGRADE_STAGE            = i18n("Exit code")
 
 MIRRORS_FETCH            = i18n("Fetching the latest filtered mirror list")
 MIRRORS_RANK             = i18n("Ranking mirrors by their connection and opening speed")

@@ -17,6 +17,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Test and enforce coverage before building
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: ./tests/run_coverage.sh
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-release-check
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y gettext zip
 

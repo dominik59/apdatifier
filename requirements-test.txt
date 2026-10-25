@@ -1,0 +1,2 @@
+# Development only. The application uses the Python standard library.
+coverage==7.17.0

@@ -1,4 +1,4 @@
-const scriptDir = Qt.resolvedUrl("sh/").toString().replace("file://", "");
+const scriptDir = decodeURIComponent(Qt.resolvedUrl("sh/").toString().replace("file://", ""));
 const configDir = "${APDATIFIER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/apdatifier}/"
 const cacheDir = "${APDATIFIER_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/apdatifier}/"
 const configFile = configDir + "config.conf"
@@ -8,6 +8,12 @@ const newsFile = cacheDir + "news.json"
 const timestampFile = cacheDir + "lastCheck"
 
 const procOpt = { stoppable: true }
+const helperPath = decodeURIComponent(Qt.resolvedUrl("backends.py").toString().replace("file://", ""))
+const shellQuote = value => "'" + String(value).replace(/'/g, "'\\''") + "'"
+const helper = (...args) => ["/usr/bin/python3", "-I", "-B", helperPath, ...args].map(shellQuote).join(" ")
+const escapeHTML = value => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+let pendingCacheWrite = null
+let cacheWriteActive = false
 
 function execute(command, callback, opt) {
     const component = Qt.createComponent("../ui/components/Shell.qml")
@@ -24,19 +30,37 @@ function execute(command, callback, opt) {
     }
 }
 
-const readFile = (file) => `[ -f "${file}" ] && cat "${file}"`
-const writeFile = (data, redir, file) => `echo '${String(data).replace(/'/g, "'\\''")}' ${redir} "${file}"`
+const readFile = (file) => `if [ -f "${file}" ]; then cat "${file}"; fi`
+const writeFile = (data, redir, file) => `printf '%s\\n' ${shellQuote(data)} ${redir} "${file}"`
 const saveTimestamp = () => execute(writeFile(Math.round(sts.lastCheck).toString(), '>', timestampFile))
 
-const bash = (script, ...args) => scriptDir + script + ' ' + args.join(' ')
+const bash = (script, ...args) => ["bash", scriptDir + script, ...args].map(shellQuote).join(" ")
 const runInTerminal = (script, ...args) => {
+    if (script === "upgrade" || script === "management") {
+        const transaction = String(Date.now()) + "-" + Math.random().toString(36).slice(2)
+        sts.transactionId = transaction
+        sts.completedStageCount = 0
+        args.splice(script === "upgrade" ? 1 : 0, 0, "--transaction", transaction)
+    }
     const cmd = bash('terminal', script, ...args)
-    execute(`kstart -- bash -c '${cmd}'`)
-    if (script === "upgrade") {
+    const failedLaunch = () => {
+        sts.busy = sts.upgrading = false
+        upgradeTimer.stop()
+        resumeScheduler()
+    }
+    const launch = () => execute("kstart -- " + cmd, (command, out, err, code) => {
+        if (code) {
+            Error(code, err || i18n("Cannot start the terminal."))
+            failedLaunch()
+        }
+    })
+    saveTimer.stop()
+    saveConfig(saved => saved ? launch() : failedLaunch(), true)
+    if (script === "upgrade" || script === "management") {
         runLater(5000, () => upgradeTimer.start())
         scheduler.stop()
         sts.busy = sts.upgrading = true
-        sts.statusMsg = i18n("Upgrade in progress") + "..."
+        sts.statusMsg = (script === "management" ? i18n("Package management in progress") : i18n("Upgrade in progress")) + "..."
         sts.statusIco = cfg.ownIconsUI ? "toolbar_upgrade" : "akonadiconsole"
     }
 
@@ -58,7 +82,8 @@ function log(message) {
 }
 
 function Error(code, err) {
-    if (err) {
+    if (code || err) {
+        err = err || i18n("The command failed without an error message.")
         sts.errors = sts.errors.concat([{code: code, message: err.trim(), type: ""}])
         cfg.notifyErrors && notify.send("error", i18n("Exit code: ") + code, err.trim())
         setStatusBar()
@@ -67,10 +92,11 @@ function Error(code, err) {
     return false
 }
 
-function handleError(code, err, type, onError) {
-    if (code && err) {
+function handleError(code, err, type, onError, category) {
+    if (code) {
+        err = err || i18n("The command failed without an error message.")
         if (type === "aur") err = err.replace(/(https?:\/\/[^\s)?]+)\?[^\s)]+/g, '$1?…')
-        sts.errors = sts.errors.concat([{code: code, message: err.trim(), type: type}])
+        sts.errors = sts.errors.concat([{code: code, message: err.trim(), type: type, category: category || ""}])
         onError()
         return true
     }
@@ -94,10 +120,10 @@ function init() {
                     return value
                 }
                 config.forEach(line => {
-                    const match = line.match(/(\w+)="([^"]*)"/)
+                    const match = line.match(/(\w+)="((?:\\.|[^"])*)"/)
                     if (match) {
                         if (typeof plasmoid.configuration[match[1]] === "object") return // skip font
-                        plasmoid.configuration[match[1]] = convert(match[2])
+                        plasmoid.configuration[match[1]] = convert(match[2].replace(/\\([\\"$`])/g, "$1"))
                     }
                 })
             }
@@ -139,26 +165,31 @@ function init() {
 
     function onStartup() {
         sts.init = true
-        checkDependencies()
-        refreshListModel()
-        upgradingState()
+        checkDependencies(() => {
+            refreshListModel()
+            upgradingState()
+        })
     }
 }
 
-function saveConfig() {
-    if (saveTimer.running) return
+function saveConfig(done, force) {
+    if (saveTimer.running && !force) return
     let config = ""
     Object.keys(cfg).forEach(key => {
         if (key.endsWith("Default")) {
             let name = key.slice(0, -7)
             if (typeof cfg[name] === "object") return // skip font
-            config += `${name}="${cfg[name]}"\n`
+            const value = String(cfg[name]).replace(/\\/g, "\\\\").replace(/(["$`])/g, "\\$1")
+            config += `${name}="${value}"\n`
         }
     })
-    execute(writeFile(config, ">", configFile))
+    execute(writeFile(config, ">", configFile), (cmd, out, err, code) => {
+        const failed = Error(code, err)
+        if (typeof done === "function") done(!failed)
+    })
 }
 
-function checkDependencies() {
+function checkDependencies(done) {
     const populate = (data) => data.map(item => ({
         "name": item.startsWith("flatpak://") ? `${item.split("/").pop()} (Flatpak)` : item.split("/").pop(),
         "value": item
@@ -167,13 +198,26 @@ function checkDependencies() {
     execute(bash('utils', 'checkPkgs'), (cmd, out, err, code) => {
         if (Error(code, err)) return
 
-        const output = out.split("\n")
-
-        const [pacman, flatpak, fwupdmgr, paru, pikaur, yay, jq, tmux ] = output.map(Boolean)
-        cfg.packages = { pacman, flatpak, fwupdmgr, paru, pikaur, yay, jq, tmux }
+        let packages, terminalPaths
+        if (out.trim().startsWith("{")) {
+            if (!validJSON(out)) return
+            const result = JSON.parse(out)
+            if (!result.tools || !Array.isArray(result.terminals)) return
+            packages = result.tools
+            terminalPaths = result.terminals
+        } else {
+            // Keep existing backends usable when system Python is absent.
+            const output = out.split("\n")
+            const names = ["pacman", "flatpak", "fwupdmgr", "paru", "pikaur", "yay", "jq", "tmux"]
+            packages = { python3: false, apt: false, snap: false }
+            names.forEach((name, index) => packages[name] = Boolean(output[index]))
+            terminalPaths = output.slice(8).filter(Boolean)
+        }
+        const { pacman, flatpak, fwupdmgr, paru, pikaur, yay, jq, tmux } = packages
+        cfg.packages = packages
         if (!cfg.wrapper) cfg.wrapper = paru ? "paru" : yay ? "yay" : pikaur ? "pikaur" : ""
 
-        const terminals = populate(output.slice(8).filter(Boolean))
+        const terminals = populate(terminalPaths)
         cfg.terminals = terminals.length > 0 ? terminals : null
         if (!cfg.terminal || !terminals.some(t => t.value === cfg.terminal))
             cfg.terminal = terminals.length > 0 ? terminals[0].value : ""
@@ -187,17 +231,20 @@ function checkDependencies() {
             plasmoid.configuration.widgets = false
             plasmoid.configuration.feedsEnabled = false
         }
+        if (typeof done === "function") done()
     })
 }
 
 
-function upgradePackage(name, appID, contentID) {
+function upgradePackage(pkg) {
     if (sts.upgrading) return
-
-    if (appID) {
-        runInTerminal("upgrade", "flatpak-pkg", appID, name)
-    } else if (contentID) {
-        runInTerminal("upgrade", "widget-pkg", contentID, name)
+    if (pkg.backend === "apt" || pkg.backend === "snap") {
+        runInTerminal("upgrade", pkg.backend + "-pkg", pkg.nativeId)
+    } else if (pkg.ID) {
+        const reference = pkg.architecture && pkg.BR ? "app/" + pkg.ID + "/" + pkg.architecture + "/" + pkg.BR : pkg.ID
+        runInTerminal("upgrade", "flatpak-pkg", reference, pkg.NM, pkg.installation || "")
+    } else if (pkg.CN) {
+        runInTerminal("upgrade", "widget-pkg", pkg.CN, pkg.NM)
     }
 }
 
@@ -207,6 +254,41 @@ function management() {
 
 
 function upgradingState() {
+    if (cfg.packages?.python3) {
+        execute(helper("lifecycle", "state"), (cmd, out, err, code) => {
+            if (code || !out || !validJSON(out)) {
+                handleError(code || 1, err, "transaction", () => {})
+                return
+            }
+            const state = JSON.parse(out)
+            const active = state.status === "running"
+            if (active) {
+                if (sts.transactionId !== state.id) sts.completedStageCount = 0
+                sts.transactionId = state.id
+                scheduler.stop()
+                upgradeTimer.start()
+                sts.busy = sts.upgrading = true
+                sts.statusMsg = i18n("Upgrade in progress") + "..."
+                if ((state.stages || []).length > sts.completedStageCount) {
+                    sts.completedStageCount = state.stages.length
+                    reconcileInstalled()
+                }
+            } else {
+                const wasUpgrading = sts.upgrading
+                sts.busy = sts.upgrading = false
+                upgradeTimer.stop()
+                if (state.id === sts.transactionId && ["error", "partial", "canceled", "unknown"].includes(state.status)) {
+                    const message = state.message || i18n("Package operation result: %1", state.status)
+                    sts.errors = sts.errors.concat([{ code: 1, type: "transaction", message }])
+                }
+                reconcileInstalled()
+                if (wasUpgrading) sts.transactionId = ""
+                resumeScheduler()
+            }
+            updatePlasmoidStatus()
+        })
+        return
+    }
     const checkProc = `pgrep -f "apdatifier.*upgrade*"`
     execute(checkProc, (cmd, out, err, code) => {
         if (!out) {
@@ -239,23 +321,63 @@ function upgradingState() {
     })
 }
 
+function reconcileInstalled() {
+    if (!cfg.packages?.python3) return
+    execute(helper("installed"), (cmd, out, err, code) => {
+        if (code || !out || !validJSON(out)) return
+        const result = JSON.parse(out)
+        if (!Array.isArray(result.items) || !Array.isArray(result.errors)) return
+        const failed = new Set(result.errors.map(entry => entry.backend))
+        const versions = new Map(result.items.map(item => [item.uid, item]))
+        const previous = JSON.stringify(cache)
+        const remaining = keys(cache).filter(item => {
+            if (failed.has(item.backend)) return true
+            let current = versions.get(item.uid)
+            if (!current && item.legacyIdentity) {
+                const normalized = name => name.replace(/ /g, "-").toLowerCase()
+                const matches = result.items.filter(pkg => pkg.backend === item.backend &&
+                    (item.backend === "flatpak" ? pkg.name === item.ID && (!item.BR || pkg.branch === item.BR)
+                        : normalized(pkg.name) === normalized(item.NM)))
+                if (matches.length !== 1) return true // Wait for a complete source check when migration is ambiguous.
+                current = matches[0]
+                item.uid = current.uid
+                item.nativeId = current.nativeId
+                item.legacyIdentity = false
+            }
+            if (!current) return false
+            return item.backend === "snap"
+                ? current.installedRevision === item.installedRevision
+                : item.backend === "flatpak"
+                ? current.installedRevision === item.AC && current.installedVersion === item.VO
+                : current.installedVersion === item.VO
+        })
+        if (previous !== JSON.stringify(remaining)) {
+            cache = remaining
+            refreshListModel()
+            saveCache(cache)
+        }
+    })
+}
 
 function upgradeSystem() {
     if (sts.upgrading && !cfg.tmuxSession) return
-    const ignorePkgs = buildIgnoreString()
-    runInTerminal("upgrade", "full", `${ignorePkgs}`)
+    runInTerminal("upgrade", "full", ...buildIgnoreArgs())
 }
 
 function upgradePart(source) {
     if (sts.upgrading && !cfg.tmuxSession) return
     if (source === "system") {
-        runInTerminal("upgrade", "system", buildIgnoreString())
+        runInTerminal("upgrade", "system", ...buildIgnoreArgs())
     } else {
         runInTerminal("upgrade", source)
     }
 }
 
 function stopCheck() {
+    if (cfg.packages?.python3 && sts.checkId) execute(helper("cancel", sts.checkId))
+    sts.checkId = ""
+    sts.retryAt = 0
+    sts.retryAttempts = 0
     sts.errors = []
     sts.busy = false
     sts.proc?.cleanup()
@@ -298,33 +420,37 @@ function loadIgnorePkgs() {
     })
 }
 
-function buildIgnoreString() {
+function buildIgnoreArgs() {
     const rules = !cfg.rules ? [] : JSON.parse(cfg.rules)
-    if (!Array.isArray(rules)) return ''
+    if (!Array.isArray(rules)) return []
 
     const ignoreItems = rules.filter(rule =>
-        rule && rule.ignore === true
+        rule && rule.ignore === true && (!rule.backend || rule.backend === "pacman")
     )
 
-    if (ignoreItems.length === 0) return ''
+    if (ignoreItems.length === 0) return []
 
     const values = ignoreItems.map(rule => rule.value)
-    return `--ignore ${values.join(',')}`
+    return ["--ignore", values.join(',')]
 }
 
 
-function checkUpdates() {
+function checkUpdates(options) {
     if (sts.upgrading) return
     if (!isOnline) return
 
+    if (!options?.retry) sts.retryAttempts = 0
+    sts.retryAt = 0
     sts.errors = []
+    sts.checkId = String(Date.now()) + "-" + Math.random().toString(36).slice(2)
+    const token = sts.checkId
     scheduler.stop()
     sts.busy = true
 
-    let archRepos = [], archAur = [], flatpak = [], widgets = [], firmwares = []
+    let archRepos = [], archAur = [], flatpak = [], widgets = [], firmwares = [], nativePackages = []
 
-    const feeds = cfg.feedsEnabled ? parseCustomFeeds(cfg.feeds).map(u => `'${u}'`).join(' ') : ""
-    const news = feeds && cfg.packages?.jq
+    const feeds = cfg.feedsEnabled ? parseCustomFeeds(cfg.feeds) : []
+    const news = feeds.length && cfg.packages?.jq
 
              news ? checkNews() :
          cfg.arch ? checkRepos() :
@@ -339,7 +465,7 @@ function checkUpdates() {
                            cfg.widgets ? checkWidgets() : cfg.fwupd ? checkFirmwares() : merge()
         sts.statusIco = cfg.ownIconsUI ? "status_news" : "news-subscribe"
         sts.statusMsg = i18n("Checking latest news...")
-        execute(bash('utils', 'rss', feeds), (cmd, out, err, code) => {
+        execute(bash('utils', 'rss', ...feeds), (cmd, out, err, code) => {
             if (handleError(code, err, "news", next)) return
             if (out) {
                 const news = JSON.parse(out.trim())
@@ -419,14 +545,10 @@ function checkUpdates() {
             if (handleError(code, err, "flatpak", next)) return
             sts.statusIco = cfg.ownIconsUI ? "status_flatpak" : "apdatifier-flatpak"
             sts.statusMsg = i18n("Checking flatpak updates...")
-            execute("flatpak remote-ls --app --updates --show-details", (cmd, out, err, code) => {
-                if (handleError(code, err, "flatpak", next)) return
-                const updates = out.trim()
-                makeFlatpakList(updates, "flatpak").then(result => {
-                    flatpak = result
-                    next()
-                })
-            }, procOpt)
+            makeFlatpakList().then(result => {
+                flatpak = result
+                next()
+            })
         }, procOpt)
     }
 
@@ -445,10 +567,12 @@ function checkUpdates() {
         sts.statusIco = cfg.ownIconsUI ? "status_package" : "apdatifier-package"
         sts.statusMsg = i18n("Checking firmware updates...")
         execute("fwupdmgr refresh --force", (cmd, out, err, code) => {
-            if (handleError(code, err, "fwupdmgr", merge)) return
+            if (handleError(code, err, "fwupd", merge)) return
             execute("fwupdmgr get-updates --json", (cmd, out, err, code) => {
-                if (handleError(code, err, "fwupdmgr", merge)) return
+                if (handleError(code, err, "fwupd", merge)) return
                 firmwares = JSON.parse(out).Devices.map(device => ({
+                    backend: "fwupd",
+                    uid: "fwupd:" + (device.DeviceId || device.Vendor + "-" + device.Name),
                     NM: `${device.Vendor}-${device.Name}`.replace(/ /g, "-").toLowerCase(),
                     RE: "fwupd",
                     DE: device.Releases?.[0]?.Summary || "",
@@ -464,11 +588,55 @@ function checkUpdates() {
     }
 
     function merge() {
-        const list = keys(archRepos.concat(archAur, flatpak, widgets, firmwares))
+        const sources = ["apt", "snap"].filter(source => cfg[source])
+        function checkNext(index) {
+            if (token !== sts.checkId) return
+            if (index === sources.length) {
+                completeMerge()
+                return
+            }
+            const source = sources[index]
+            sts.statusMsg = source === "apt" ? i18n("Checking APT updates...") : i18n("Checking Snap updates...")
+            sts.statusIco = cfg.ownIconsUI ? "status_package" : "apdatifier-package"
+            const next = () => checkNext(index + 1)
+            if (!cfg.packages?.python3 || !cfg.packages[source]) {
+                handleError(1, i18n("The backend is unavailable: %1", source), source, next)
+                return
+            }
+            execute(helper("check", source, "--mode", cfg.aptUpgradeMode || "auto", "--request-id", token),
+                    (cmd, out, err, code) => {
+                if (token !== sts.checkId) return
+                let result
+                try { result = JSON.parse(out) } catch (e) {}
+                if (!result || result.schemaVersion !== 1 || !Array.isArray(result.items)) {
+                    handleError(code || 1, err || i18n("The backend returned invalid data."), source, next)
+                    return
+                }
+                nativePackages = nativePackages.concat(result.items.map(item => Object.assign({}, item, {
+                    NM: item.name, VO: item.installedVersion, VN: item.candidateVersion,
+                    RE: item.repository, DE: item.summary, LN: item.homepage, IN: item.icon,
+                    RN: item.installReason === "unknown" ? "" : item.installReason,
+                    stale: !result.metadataCurrent, synchronizedAt: result.synchronizedAt || 0
+                })))
+                if (code || result.status !== "ok") {
+                    const message = (result.errors || []).map(error => error.message).join("\n")
+                    const failure = (result.errors || [])[0] || {}
+                    handleError(failure.code || code || 1, message, source, next, failure.category)
+                } else next()
+            }, procOpt)
+        }
+        checkNext(0)
+    }
+
+    function completeMerge() {
+        const list = keys(archRepos.concat(archAur, flatpak, widgets, firmwares, nativePackages))
 
         const finish = (finalList) => {
+            if (token !== sts.checkId) return
             sts.errors.length > 0
-                ? runLater(3000, () => isOnline ? finalize(finalList) : stopCheck())
+                ? runLater(3000, () => {
+                    if (token === sts.checkId) isOnline ? finalize(finalList) : stopCheck()
+                })
                 : finalize(finalList)
         }
 
@@ -476,7 +644,7 @@ function checkUpdates() {
             if (!ignorePatterns || ignorePatterns.length === 0) {
                 finish(list)
             } else {
-                const filtered = list.filter(pkg => !ignorePatterns.some(re => re.test(pkg.NM)))
+                const filtered = list.filter(pkg => pkg.backend !== "pacman" || !ignorePatterns.some(re => re.test(pkg.NM)))
                 finish(filtered)
             }
         })
@@ -504,7 +672,7 @@ function makeArchList(updates, source) {
                     if (code && handleError(code, err, source, () => resolve([]))) return
                     const descriptions = out.trim().split('\n\n')
 
-                    execute(bash('utils', 'getIcons', pkgs), (cmd, out, err, code) => {
+                    execute(bash('utils', 'getIcons', ...parsed.map(match => match[1])), (cmd, out, err, code) => {
                         if (code && handleError(code, err, source, () => resolve([]))) return
                         const icons = out.split('\n')
 
@@ -583,31 +751,46 @@ function makeArchList(updates, source) {
 }
 
 
-function makeFlatpakList(updates) {
+function makeFlatpakList() {
     return new Promise((resolve) => {
-        if (!updates) {
-            resolve([])
-        } else {
-            execute("flatpak list --app --columns=application,version,active", (cmd, out, err, code) => {
-                if (code && handleError(code, err, "flatpak", () => resolve([]))) return
-                const description = out.trim().split("\n").reduce((obj, line) => {
-                    const [ID, VO, AC] = line.split("\t").map(entry => entry.trim())
-                    obj[ID] = { VO, AC }
-                    return obj
-                }, {})
-                const extendedList = updates.split("\n").map(line => {
-                    const [NM, DE, ID, VN, BR, , RE, , CM, RT, IS, DS] = line.split("\t").map(entry => entry.trim())
-                    const { VO, AC } = description[ID]
-                    return {
-                        NM: NM.replace(/ /g, "-").toLowerCase(),
-                        DE, LN: "https://flathub.org/apps/" + ID,
-                        ID, BR, RE, AC, CM, RT, IS, DS, VO,
-                        VN: VO === VN ? i18n("latest commit") : VN
-                    }
-                })
-                resolve(extendedList)
-            }, procOpt)
-        }
+        execute("flatpak list --app --columns=application,version,active,branch,arch,installation,origin", (cmd, out, err, code) => {
+            if (handleError(code, err, "flatpak", () => resolve([]))) return
+            const installed = out.trim().split("\n").filter(Boolean).map(line => {
+                const [ID, VO, AC, BR, architecture, installation, origin] = line.split("\t").map(entry => entry.trim())
+                return { ID, VO, AC, BR, architecture, installation, origin }
+            })
+            const installations = Array.from(new Set(installed.map(pkg => pkg.installation)))
+            const extendedList = []
+            function readInstallation(index) {
+                if (index === installations.length) { resolve(extendedList); return }
+                const installation = installations[index]
+                const scope = installation === "user" ? "--user" : installation === "system" || installation === "default"
+                    ? "--system" : "--installation=" + installation
+                const command = ["flatpak", "remote-ls", scope, "--app", "--updates", "--arch=*",
+                    "--columns=name,description,application,version,branch,arch,origin,ref,commit,runtime,installed-size,download-size"]
+                    .map(shellQuote).join(" ")
+                execute(command, (cmd, out, err, code) => {
+                    if (handleError(code, err, "flatpak", () => resolve([]))) return
+                    out.split("\n").filter(Boolean).forEach(line => {
+                        const [NM, DE, ID, VN, BR, architecture, RE, , CM, RT, IS, DS] = line.split("\t").map(entry => entry.trim())
+                        installed.filter(pkg => pkg.installation === installation && pkg.ID === ID && pkg.BR === BR
+                            && pkg.architecture === architecture && pkg.origin === RE).forEach(pkg => {
+                            const nativeId = pkg.installation + ":" + ID + "/" + architecture + "/" + BR
+                            extendedList.push({
+                                backend: "flatpak", nativeId, uid: "flatpak:" + nativeId,
+                                architecture, installation: pkg.installation,
+                                NM: NM.replace(/ /g, "-").toLowerCase(),
+                                DE, LN: "https://flathub.org/apps/" + ID,
+                                ID, BR, RE, AC: pkg.AC, CM, RT, IS, DS, VO: pkg.VO,
+                                VN: pkg.VO === VN ? i18n("latest commit") : VN
+                            })
+                        })
+                    })
+                    readInstallation(index + 1)
+                }, procOpt)
+            }
+            readInstallation(0)
+        }, procOpt)
     })
 }
 
@@ -637,7 +820,7 @@ function sortList(list, byName) {
 
 function refreshListModel(list) {
     list = sortList(applyRules(list || cache)) || []
-    sts.count = list.length || 0
+    sts.count = list.filter(item => !item.state || item.state === "available").length
     setStatusBar()
 
     if (!list) return
@@ -653,6 +836,13 @@ function finalize(list) {
 
     sts.lastCheck = Date.now()
     saveTimestamp()
+    sts.retryAt = 0
+    if (!sts.errors.length) sts.retryAttempts = 0
+    if (cfg.checkMode !== "manual" && sts.errors.some(isNetworkError) && (sts.retryAttempts || 0) < 3) {
+        const attempt = sts.retryAttempts || 0
+        sts.retryAttempts = attempt + 1
+        sts.retryAt = sts.lastCheck + 30000 * Math.pow(2, attempt)
+    }
 
     if (cfg.notifyErrors && sts.error) {
         const notifyMsg = sts.errors.map(err => `<b>${err.type}</b> => ${err.message} (Exit code ${err.code})`).join('\n\n')
@@ -670,26 +860,33 @@ function finalize(list) {
 
     if (sts.error && cache.length > 0) {
         var errorTypes = {}
-        for (var i = 0; i < sts.errors.length; i++) errorTypes[sts.errors[i].type] = true
+        for (var i = 0; i < sts.errors.length; i++) {
+            const type = sts.errors[i].type
+            errorTypes[type === "fwupdmgr" ? "fwupd" : type] = true
+        }
 
         var currentNames = {}
-        for (var j = 0; j < list.length; j++) currentNames[list[j].NM] = true
+        for (var j = 0; j < list.length; j++) currentNames[list[j].uid] = true
         
         var cachedPackages = []
         for (var k = 0; k < cache.length; k++) {
             var cached = cache[k]
-            if (currentNames[cached.NM]) continue
+            if (currentNames[cached.uid]) continue
             
-            if (errorTypes.repositories && cached.RE && cached.RE !== "aur" && cached.RE !== "devel") {
+            if (cached.backend === "pacman" && errorTypes.repositories && cached.RE !== "aur" && cached.RE !== "devel") {
                 cachedPackages.push(cached)
-            } else if (errorTypes.aur && (cached.RE === "aur" || cached.RE === "devel")) {
+            } else if (cached.backend === "pacman" && errorTypes.aur && (cached.RE === "aur" || cached.RE === "devel")) {
                 cachedPackages.push(cached)
-            } else if (errorTypes.flatpak && cached.ID) { 
+            } else if (errorTypes.flatpak && cached.backend === "flatpak") {
                 cachedPackages.push(cached)
-            } else if (errorTypes.widgets && cached.CN) {
+            } else if (errorTypes.widgets && cached.backend === "widgets") {
+                cachedPackages.push(cached)
+            } else if (errorTypes[cached.backend]) {
                 cachedPackages.push(cached)
             }
         }
+
+        cachedPackages.forEach(item => item.stale = true)
 
         list = list.concat(cachedPackages)
     }
@@ -697,15 +894,16 @@ function finalize(list) {
     refreshListModel(list)
 
     if (cfg.notifyUpdates) {
-        const cached = new Map(cache.map(el => [el.NM, el.VN]))
+        const cached = new Map(cache.map(el => [el.uid, updateFingerprint(el)]))
         const newList = applyRules(list).filter(el =>
+            !el.stale && (!el.state || el.state === "available") &&
             (!cfg.notifyExplicitOnly || !el.RN || el.RN === "explicit") &&
-            (!cached.has(el.NM) || (cfg.notifyEveryBump && cached.get(el.NM) !== el.VN))
+            (!cached.has(el.uid) || (cfg.notifyEveryBump && cached.get(el.uid) !== updateFingerprint(el)))
         )
     
         if (newList.length > 0) {
             const title = i18np("+%1 new update", "+%1 new updates", newList.length)
-            const body = newList.map(pkg => `${pkg.NM} → ${pkg.VN}`).join("\n")
+            const body = newList.map(pkg => escapeHTML(pkg.NM) + " → " + escapeHTML(pkg.VN || pkg.candidateRevision)).join("\n")
             notify.send("updates", title, body)
         }
     }
@@ -715,6 +913,13 @@ function finalize(list) {
 }
 
 function saveCache(list) {
+    if (cfg.packages?.python3) {
+        // ASCII chunks cannot split a UTF-16 surrogate pair at the process boundary.
+        pendingCacheWrite = JSON.stringify(keys(JSON.parse(JSON.stringify(list)))).replace(
+            /[\u007f-\uffff]/g, character => "\\u" + ("0000" + character.charCodeAt(0).toString(16)).slice(-4))
+        flushCache()
+        return
+    }
     if (JSON.stringify(list).length > 130000) {
         let start = 0
         const chunkSize = 200
@@ -731,6 +936,33 @@ function saveCache(list) {
         const json = toFileFormat(keys(sortList(JSON.parse(JSON.stringify(list)), true)))
         execute(writeFile(json, '>', cacheFile))
     }
+}
+
+function flushCache() {
+    if (cacheWriteActive || pendingCacheWrite === null) return
+    cacheWriteActive = true
+    const data = pendingCacheWrite
+    pendingCacheWrite = null
+    const token = String(Date.now()) + "-" + Math.random().toString(36).slice(2)
+    const size = 16000
+    const total = Math.max(1, Math.ceil(data.length / size))
+    function write(index) {
+        execute(helper("cache-chunk", token, String(index), String(total), "--", data.slice(index * size, (index + 1) * size)),
+                (cmd, out, err, code) => {
+            if (code || index + 1 === total) {
+                cacheWriteActive = false
+                if (code) Error(code, err || i18n("Cannot save the package cache."))
+                flushCache()
+            } else write(index + 1)
+        })
+    }
+    write(0)
+}
+
+function updateFingerprint(item) {
+    if (item.backend === "snap") return item.candidateRevision
+    if (item.backend === "flatpak") return item.CM || item.VN
+    return item.VN
 }
 
 
@@ -750,6 +982,13 @@ function resumeScheduler() {
     }
 }
 
+function isNetworkError(error) {
+    if (error.type === "snap" && error.category === "service-unavailable") return false
+    return error.category === "network-error" ||
+        /could not (?:connect|resolve)|network (?:is )?unreachable|network is down|no route to host|temporary failure (?:in |resolving)|connection timed out|connection refused|failed to connect/i
+            .test(error.message || "")
+}
+
 function searchScheduler(options) {
     if (!isOnline) return
     if (isMetered) return
@@ -763,6 +1002,12 @@ function searchScheduler(options) {
     const currTime = new Date().getTime()
     const lastCheck = sts.lastCheck || 0
     let nextCheck = null
+
+    if (sts.retryAt) {
+        if (options?.simulate) return sts.retryAt
+        if (sts.retryAt <= currTime) checkUpdates({ retry: true })
+        return
+    }
 
     if (mode === "interval") {
         const interval = parseFloat(cfg.intervalMinutes)
@@ -856,8 +1101,9 @@ function applyRules(list) {
     })
 
     function applyRule(el, rule) {
+        if (rule.backend && rule.backend !== el.backend) return
         const types = {
-            'name'  : () => el.NM === rule.value,
+            'name'  : () => el.NM === rule.value || el.nativeId === rule.value || el.uid === rule.value,
             'regex' : () => { try { return new RegExp(rule.value).test(el.NM) } catch(e) { return false } }
         }
 
@@ -874,13 +1120,24 @@ function applyRules(list) {
 
 
 function keys(list) {
-    const keysList = ["GR", "PR", "DP", "RQ", "CF", "RP", "IS", "DT", "RN", "ID", "BR", "AC", "CM", "RT", "DS", "CN", "AU"]
+    const keysList = ["NM", "VO", "VN", "RE", "DE", "LN", "IN", "TP", "GR", "PR", "DP", "RQ", "CF", "RP", "IS", "DT", "RN", "ID", "BR", "AC", "CM", "RT", "DS", "CN", "AU",
+                      "backend", "uid", "nativeId", "architecture", "installedRevision", "candidateRevision", "state", "installation"]
 
     list.forEach(el => {
         keysList.forEach(key => {
             if (!el.hasOwnProperty(key)) el[key] = ""
-            else if (el[key] === "") delete el[key]
         })
+        if (!el.backend) el.backend = el.CN ? "widgets" : el.ID ? "flatpak" : el.RE === "fwupd" ? "fwupd" : "pacman"
+        if (!el.nativeId) el.nativeId = el.backend === "widgets" ? String(el.CN || el.NM) : el.ID || el.NM
+        if (!el.uid) {
+            el.uid = el.backend + ":" + el.nativeId
+            el.legacyIdentity = true
+        }
+        el.legacyIdentity = Boolean(el.legacyIdentity)
+        if (!el.state) el.state = "available"
+        el.stale = Boolean(el.stale)
+        el.synchronizedAt = Number(el.synchronizedAt || 0)
+        if (!/^https?:\/\//.test(el.LN)) el.LN = ""
 
         if (el.hasOwnProperty("IC")) delete el["IC"]
         if (el.hasOwnProperty("EX")) delete el["EX"]

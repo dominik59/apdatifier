@@ -1,21 +1,44 @@
 #!/usr/bin/env bash
 
 source "$(dirname "$0")/utils"
+source "$(dirname "$0")/arguments"
 
-trap 'echo -e "\n\n$(colorize red bold $ICO_WARN "CTRL+C. $UPGRADE_SKIPPED")"' SIGINT
+parseArguments() {
+    splitArguments "$1" && return 0
+    printError "$UPGRADE_ARGUMENTS"
+    return 2
+}
+
+operation="$1"; shift
+transaction=""
+if [[ "$1" == "--transaction" ]]; then
+    transaction="$2"; shift 2
+fi
+[[ -n "$transaction" ]] || transaction="$(date +%s)-$$"
+canceled=false
+sequenceCode=0
+hasPython=false
+[[ -x /usr/bin/python3 ]] && hasPython=true
+trap 'canceled=true' SIGINT
+
+state() {
+    [[ "$hasPython" == true ]] || return 0
+    /usr/bin/python3 -I -B "$scriptDir/../backends.py" lifecycle "$@" >/dev/null
+}
+
+state start --id "$transaction" --pid "$$" || exit 1
 
 run() {
-    [[ -z $2 ]] && printExec "$1"
-
+    printf '\n'; printf '%q ' "$@"; printf '\n\n'
     if [ "$idleInhibit" = true ]; then
-        read -ra cmd <<< "$1"
-        systemd-inhibit --what=idle:sleep:shutdown --who="Apdatifier" --why="$UPGRADE_PROGRESS" "${cmd[@]}"
+        systemd-inhibit --what=idle:sleep:shutdown --who="Apdatifier" --why="$UPGRADE_PROGRESS" "$@"
     else
-        eval ${1}
+        "$@"
     fi
 }
 
 printClose() {
+    [[ -t 0 ]] || return 0
     tput civis
     printMsg "$UPGRADE_ENTER"
 
@@ -25,7 +48,7 @@ printClose() {
                 --dest org.kde.plasmashell \
                 --object-path /org/kde/osdService \
                 --method org.kde.osdService.showText \
-                apdatifier-plasmoid "$UPGRADE_COMPLETE" >/dev/null 2>&1
+                apdatifier-plasmoid "$UPGRADE_RESULT" >/dev/null 2>&1
         fi
     done
 
@@ -33,7 +56,13 @@ printClose() {
     [[ $(basename "$terminal") = "yakuake" ]] && qdbusCMD sessions removeSession "$(qdbusCMD sessions activeSessionId)"
 }
 
-bin="$sudoBin pacman"; [ "$aur" = true ] && bin=$wrapper
+parseArguments "$sudoBin" || exit $?
+administrator=("${parsedArguments[@]}")
+bin=("${administrator[@]}" pacman)
+if [[ "$aur" == true ]]; then
+    parseArguments "$wrapper" || exit $?
+    bin=("${parsedArguments[@]}")
+fi
 
 critical_packages=(
     "amd-ucode"
@@ -75,11 +104,6 @@ arch_upgrade() {
 
     [ "$mirrors" != "false" ] && "$scriptDir"/mirrorlist
 
-    if [ -n "$preExec" ]; then
-        run "$preExec"
-        printf '\n\033[32m'; printf '%.0s:' {1..48}; printf '\033[0m\n\n'
-    fi
-
     if [ "$rebootSystem" = true ]; then
         for package in "${critical_packages[@]}"; do
             matches=$(pacman -Qq | grep -E "^${package//\*/.*}$")
@@ -94,8 +118,10 @@ arch_upgrade() {
 
     test -f "$configDir/env.sh" && source "$configDir/env.sh"
 
-    ignorePkgs="$@"
-    run "$bin -Syu $archFlags $ignorePkgs"
+    parseArguments "$archFlags" || return $?
+    local flags=("${parsedArguments[@]}")
+    run "${bin[@]}" -Syu "${flags[@]}" "$@"
+    local result=$?
 
     for pkg in "${critical_installed[@]}"; do
         afterVersion=$(pacman -Q $pkg | awk '{print $2}')
@@ -103,33 +129,37 @@ arch_upgrade() {
             critical_updated+=("$pkg")
         fi
     done
+    return "$result"
 }
 
 flatpak_upgrade() {
     printMsg "$UPGRADE_FULL_FLATPAK"
     echo
 
-    run "flatpak update $flatpakFlags"
+    parseArguments "$flatpakFlags" || return $?
+    local flags=("${parsedArguments[@]}")
+    run flatpak update "${flags[@]}" || return $?
 
     if [ "$flatpakRemoveUnused" = true ]; then
         echo
-        run "flatpak uninstall --unused $flatpakFlags"
+        run flatpak uninstall --unused "${flags[@]}"
     fi
 }
 
 widgets_upgrade() {
     printMsg "$UPGRADE_FULL_WIDGETS"
     echo
-    run "$scriptDir/widgets upgradeAll" noPrint
+    run "$scriptDir/widgets" upgradeAll
 }
 
 fwupd_upgrade() {
     printMsg "fwupdmgr"
     echo
-    run "$sudoBin fwupdmgr update"
+    run "${administrator[@]}" fwupdmgr update
 }
 
 finish() {
+    state finish --id "$transaction"
     trap ' ' SIGINT
 
     endTime=$(date +%s)
@@ -153,62 +183,34 @@ finish() {
     printClose
 }
 
+native_upgrade() {
+    local source="$1"; shift
+    [[ "$hasPython" == true ]] || { printError "System Python 3 is unavailable"; return 127; }
+    /usr/bin/python3 -I -B "$scriptDir/../backends.py" foreground "$source" "$@" --transaction "$transaction"
+}
+
+stage() {
+    [[ "$canceled" == true ]] && return 130
+    local source="$1"; shift
+    "$@"
+    local result=$?
+    [[ "$canceled" == true ]] && result=130
+    printImportant "$source" "$UPGRADE_STAGE: $result"
+    [[ "$result" -eq 130 ]] && canceled=true
+    if [[ "$result" -eq 130 ]]; then sequenceCode=130
+    elif [[ "$result" -ne 0 && "$sequenceCode" -eq 0 ]]; then sequenceCode=1
+    fi
+    state stage --id "$transaction" --stage "$source" --code "$result"
+    return "$result"
+}
+
 fullSystemUpgrade() {
-    startTime=$(date +%s)
-    critical_updated=()
-    critical_installed=()
-
-    if [ "$arch" = true ] || [ "$aur" = true ]; then
-        arch_upgrade "$@"
-    fi
-    if [ "$flatpak" = true ]; then
-        flatpak_upgrade
-    fi
-    if [ "$widgets" = true ]; then
-        widgets_upgrade
-    fi
-    if [ "$fwupd" = true ]; then
-        fwupd_upgrade
-    fi
-
-    if [ -n "$postExec" ]; then
-        printf '\n\033[32m'; printf '%.0s:' {1..48}; printf '\033[0m\n\n'
-        run "$postExec"
-    fi
-
-    finish
-}
-
-system_upgrade() {
-    startTime=$(date +%s)
-    critical_updated=()
-    critical_installed=()
-    arch_upgrade "$@"
-
-    if [ -n "$postExec" ]; then
-        printf '\n\033[32m'; printf '%.0s:' {1..48}; printf '\033[0m\n\n'
-        run "$postExec"
-    fi
-
-    finish
-}
-
-flatpak_all_upgrade() {
-    startTime=$(date +%s)
-    flatpak_upgrade
-    finish
-}
-
-widgets_all_upgrade() {
-    startTime=$(date +%s)
-    widgets_upgrade
-    finish
-}
-
-fwupd_all_upgrade() {
-    startTime=$(date +%s)
-    fwupd_upgrade
-    finish
+    if [[ "$arch" == true || "$aur" == true ]]; then stage pacman arch_upgrade "$@"; fi
+    [[ "$apt" == true ]] && stage apt native_upgrade apt upgrade
+    [[ "$snap" == true ]] && stage snap native_upgrade snap refresh
+    [[ "$flatpak" == true ]] && stage flatpak flatpak_upgrade
+    [[ "$widgets" == true ]] && stage widgets widgets_upgrade
+    [[ "$fwupd" == true ]] && stage fwupd fwupd_upgrade
 }
 
 sys_reboot() {
@@ -226,28 +228,54 @@ flatpak_package() {
 
     printExec "flatpak update" "$1 $flatpakFlags"
 
-    flatpak update $1 $flatpakFlags
-
-    printClose
+    parseArguments "$flatpakFlags" || return $?
+    local flags=("${parsedArguments[@]}")
+    local scope=()
+    case "$3" in
+        user) scope=(--user) ;;
+        system|default) scope=(--system) ;;
+        "") ;;
+        *) scope=("--installation=$3") ;;
+    esac
+    run flatpak update "${flags[@]}" "${scope[@]}" "$1"
 }
 
 widget_package() {
     printMsg "$UPGRADE_PACKAGE: $2"
     echo
 
-    "$scriptDir"/widgets upgrade "$1" "$2"
-
-    printClose
+    run "$scriptDir/widgets" upgrade "$1" "$2"
 }
 
 
-case "$1" in
-          "full") shift; fullSystemUpgrade $@ ;;
-        "system") shift; system_upgrade $@ ;;
-       "flatpak") shift; flatpak_all_upgrade ;;
-       "widgets") shift; widgets_all_upgrade ;;
-         "fwupd") shift; fwupd_all_upgrade ;;
-   "flatpak-pkg") shift; flatpak_package $1 $2 ;;
-    "widget-pkg") shift; widget_package $1 $2 ;;
-               *) exit;;
+startTime=$(date +%s)
+critical_updated=()
+critical_installed=()
+
+if [[ -n "$preExec" ]]; then stage pre-script run bash -c "$preExec"; fi
+
+if [[ "$canceled" != true ]]; then
+case "$operation" in
+          "full") fullSystemUpgrade "$@" ;;
+        "system") stage pacman arch_upgrade "$@" ;;
+           "apt") stage apt native_upgrade apt upgrade ;;
+          "snap") stage snap native_upgrade snap refresh ;;
+       "apt-pkg") stage apt native_upgrade apt upgrade-package "$1" ;;
+      "snap-pkg") stage snap native_upgrade snap refresh "$1" ;;
+       "flatpak") stage flatpak flatpak_upgrade ;;
+       "widgets") stage widgets widgets_upgrade ;;
+         "fwupd") stage fwupd fwupd_upgrade ;;
+   "flatpak-pkg") stage flatpak flatpak_package "$1" "$2" "$3" ;;
+    "widget-pkg") stage widgets widget_package "$1" "$2" ;;
+               *) stage arguments false ;;
 esac
+fi
+
+if [[ -n "$postExec" ]]; then
+    wasCanceled="$canceled"
+    canceled=false
+    stage post-script run bash -c "$postExec"
+    [[ "$wasCanceled" == true ]] && canceled=true
+fi
+finish
+exit "$sequenceCode"

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+# Split configured arguments with POSIX quoting, without evaluating shell code.
+# Keep this in Bash so existing backends do not depend on Python.
+splitArguments() {
+    parsedArguments=()
+    local input="$1" word="" quote="" character next index active=false
+    for ((index=0; index<${#input}; index++)); do
+        character="${input:index:1}"
+        case "$quote" in
+            "'")
+                if [[ "$character" == "'" ]]; then quote=""; else word+="$character"; fi
+                ;;
+            '"')
+                case "$character" in
+                    '"') quote="" ;;
+                    '\')
+                        next="${input:index+1:1}"
+                        case "$next" in
+                            '$'|'`'|'"'|'\') word+="$next"; ((index+=1)) ;;
+                            $'\n') ((index+=1)) ;;
+                            *) word+="$character" ;;
+                        esac
+                        ;;
+                    *) word+="$character" ;;
+                esac
+                ;;
+            "")
+                case "$character" in
+                    ' '|$'\t'|$'\r'|$'\n')
+                        if [[ "$active" == true ]]; then parsedArguments+=("$word"); word=""; active=false; fi
+                        ;;
+                    "'"|'"') quote="$character"; active=true ;;
+                    '\')
+                        ((index+=1))
+                        if ((index >= ${#input})); then return 2; fi
+                        next="${input:index:1}"
+                        if [[ "$next" != $'\n' ]]; then word+="$next"; active=true; fi
+                        ;;
+                    *) word+="$character"; active=true ;;
+                esac
+                ;;
+        esac
+    done
+    if [[ -n "$quote" ]]; then return 2; fi
+    if [[ "$active" == true ]]; then parsedArguments+=("$word"); fi
+    return 0
+}

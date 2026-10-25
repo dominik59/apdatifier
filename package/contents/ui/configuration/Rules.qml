@@ -23,6 +23,7 @@ ColumnLayout {
                             icon: el.icon,
                             excluded: el.excluded,
                             ignore: ('ignore' in el) ? el.ignore : false,
+                            backend: el.backend || "",
                             important: ('important' in el) ? el.important : false
                         })
                     })
@@ -74,6 +75,21 @@ ColumnLayout {
                     }
                 }
                 ComboBox {
+                    implicitWidth: 110
+                    model: [
+                        { name: i18n("All sources"), value: "" },
+                        { name: "Arch", value: "pacman" },
+                        { name: "APT", value: "apt" },
+                        { name: "Snap", value: "snap" },
+                        { name: "Flatpak", value: "flatpak" },
+                        { name: i18n("Widgets"), value: "widgets" },
+                        { name: i18n("Firmware"), value: "fwupd" }
+                    ]
+                    textRole: "name"
+                    currentIndex: JS.setIndex(ruleItem.model.backend || "", model)
+                    onActivated: rulesList.model.setProperty(ruleItem.index, "backend", model[currentIndex].value)
+                }
+                ComboBox {
                     implicitWidth: 120
                     id: type
                     model: typesModel
@@ -108,7 +124,7 @@ ColumnLayout {
                     enabled: true
                     onTextChanged: {
                         if (type.model.get(type.currentIndex).type === "name") {
-                            var filtered = valueField.text.replace(/[^a-z0-9_\-+.]/g, "")
+                            var filtered = valueField.text.replace(/[^a-z0-9_:\-+.]/g, "")
                             if (valueField.text !== filtered) {
                                 valueField.text = filtered
                                 return
@@ -149,7 +165,7 @@ ColumnLayout {
 
                 ToolButton {
                     ToolTip { 
-                        text: i18n("Ignore a package upgrade. <b>Be careful in skipping packages, since partial upgrades are unsupported.</b>")
+                        text: i18n("Skip this package during an upgrade. Choose APT or Snap for a source-specific rule. Rules for all sources keep the existing Arch behavior. Native package holds stay unchanged.")
                     }
                     icon.name: model.ignore ? "process-stop" : "software-updates-updates"
                     enabled: type.model.get(type.currentIndex).type === "name"
@@ -185,7 +201,7 @@ ColumnLayout {
                 onTriggered: rulesModel.append({
                     type: "name", value: "",
                     icon: plasmoid.configuration.ownIconsUI ? "apdatifier-package" : "server-database",
-                    excluded: false, important: false, ignore: false
+                    excluded: false, important: false, ignore: false, backend: ""
                 })
             },
             Kirigami.Action {
@@ -198,7 +214,8 @@ ColumnLayout {
                         if (item.value.trim() !== "")
                             array.push({
                                 type: item.type, value: item.value, icon: item.icon,
-                                excluded: item.excluded, important: item.important, ignore: item.ignore
+                                excluded: item.excluded, important: item.important, ignore: item.ignore,
+                                backend: item.backend || ""
                             })
                     }
                     var rules = JS.toFileFormat(array)

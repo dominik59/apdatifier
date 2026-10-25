@@ -1423,3 +1423,622 @@ msgstr ""
 #: ../contents/ui/scrollview/Updates.qml
 msgid "System updated"
 msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "A Snap candidate has no matching installed instance."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "A Snap revision is missing."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "A data file must not be a symbolic link."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "A manual refresh overrides the automatic-refresh hold. Override it now?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "A selected Snap has a native hold. Override it for this operation?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "A selected Snap is excluded by an operation rule."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "A selected package has a native hold."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "A selected package is no longer installed."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "APT cannot keep an excluded package unchanged."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "APT did not identify the package architecture."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "APT did not select this update under the current policy."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "APT does not use the system dpkg database."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "APT overrides the private checker paths."
+msgstr ""
+
+#: ../contents/ui/configuration/General.qml
+msgid "APT packages"
+msgstr ""
+
+#: ../contents/ui/configuration/General.qml
+msgid "APT upgrade mode"
+msgstr ""
+
+#: ../contents/ui/configuration/Upgrade.qml
+msgid "APT uses the system restart request when available. Arch checks changes to critical packages."
+msgstr ""
+
+#: ../contents/ui/configuration/Upgrade.qml
+msgid "Administrator command"
+msgstr ""
+
+#: ../contents/ui/configuration/Rules.qml
+msgid "All sources"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "An APT package needs a name and architecture."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "An APT write path is outside the private cache: "
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "An earlier version can need different dependencies. Continue?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Another operation is in progress."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Another package operation is in progress."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Another upgrade is in progress."
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "Architecture"
+msgstr ""
+
+#: ../contents/ui/configuration/General.qml
+msgid "Automatic for this distribution"
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "Available revision"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Cannot connect to snapd: "
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Cannot determine the Snap confinement mode."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Cannot determine the global Snap hold."
+msgstr ""
+
+#: ../contents/tools/tools.js
+msgid "Cannot save the package cache."
+msgstr ""
+
+#: ../contents/tools/tools.js
+msgid "Cannot start the terminal."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Change ID for tasks; empty to return: "
+msgstr ""
+
+#: ../contents/tools/tools.js
+msgid "Checking APT updates..."
+msgstr ""
+
+#: ../contents/tools/tools.js
+msgid "Checking Snap updates..."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Classic confinement gives the application access outside the Snap sandbox. Allow it?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Exact version: "
+msgstr ""
+
+#: ../contents/tools/sh/messages
+msgid "Exit code"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Filter by name; empty for all: "
+msgstr ""
+
+#: ../contents/ui/configuration/General.qml
+msgid "Full: allow dependency removals"
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "Installed revision"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Interrupted. Inspect the native transaction before retrying."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Invalid Snap candidate."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Invalid cache chunk."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Invalid value: "
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "KDE neon requires full upgrade mode."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Local package: "
+msgstr ""
+
+#: ../contents/ui/configuration/General.qml
+msgid "Needs existing snapd and system Python 3"
+msgstr ""
+
+#: ../contents/ui/configuration/General.qml
+msgid "Needs system Python 3 and APT"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "No administrator command is configured."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "No exact package matches the selected name, architecture, and version."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "No matching packages."
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "No successful repository refresh"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Numbers separated by spaces; n: next; p: previous; q: cancel: "
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+#, qt-format
+msgid "Old result from %1"
+msgstr ""
+
+#: ../contents/tools/tools.js
+msgid "Package management in progress"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Package metadata is unavailable."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Package operation in progress"
+msgstr ""
+
+#: ../contents/tools/tools.js
+#, qt-format
+msgid "Package operation result: %1"
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "Package source"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Path to a DEB file: "
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Remove these Snaps without a data snapshot?"
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "Repository data"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Restart the system now?"
+msgstr ""
+
+#: ../contents/tools/sh/messages
+msgid "Review the operation results in the terminal"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Revision return does not restore all shared application data."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Run this APT operation?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Run this Snap operation?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Safe mode does not permit package removals."
+msgstr ""
+
+#: ../contents/ui/configuration/General.qml
+msgid "Safe: keep installed packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Search: "
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Select a package and a version."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Select a regular DEB file."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Select at least one package."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Select numbers from the displayed result set."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Select one DEB file."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Select one inactive revision."
+msgstr ""
+
+#: ../contents/ui/configuration/Rules.qml
+msgid "Skip this package during an upgrade. Choose APT or Snap for a source-specific rule. Rules for all sources keep the existing Arch behavior. Native package holds stay unchanged."
+msgstr ""
+
+#: ../contents/ui/configuration/General.qml
+msgid "Snap packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The APT cache path cannot be represented safely."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The APT transaction contains an unknown record."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The DEB metadata is invalid."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The Snap hold has an unknown format."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The Snap refresh configuration is invalid."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The Snap transaction did not complete successfully."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The Snap transaction result is unknown. Inspect snap changes."
+msgstr ""
+
+#: ../contents/tools/tools.js
+#, qt-format
+msgid "The backend is unavailable: %1"
+msgstr ""
+
+#: ../contents/tools/tools.js
+msgid "The backend returned invalid data."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The cache chunk has an unsafe owner."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The cache must contain a list."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The check was canceled."
+msgstr ""
+
+#: ../contents/tools/tools.js
+msgid "The command failed without an error message."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The command timed out."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The data file has an unsafe owner or type."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The data file is not valid JSON."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The local file can install an earlier version. Continue?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The lock has an unsafe owner."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The native command failed."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The operation was canceled."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The package metadata has an unknown format."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The private directory has an unsafe owner or type."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The rules file must contain a list."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The selected Snap is no longer installed."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The selected revision is active or unavailable."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The snapd response has an unknown format."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The snapd response is too large."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The system requests a restart."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The terminal process ended without a transaction result."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The transaction changes an excluded package."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The transaction identifier does not match."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "There are no selected Snap updates."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "This operation removes downloaded package archives."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "This removes a revision that could be used for revision return. Continue?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Unknown APT operation."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Unknown APT upgrade mode."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Unknown Snap operation."
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "Update state"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "dpkg returned an unknown record."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "snapd did not return a package list."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "snapd did not return refresh candidates."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "snapd did not return valid JSON."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "snapd rejected the request."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Arch packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Automatically installed packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Cannot compare the selected APT versions."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Install a cached package version"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Install a local DEB file"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Manage inactive revisions"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Manage installed packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Manually installed packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Number; n: next; p: previous; q: cancel: "
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Packages that will receive an earlier version: "
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Recent operations"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Refresh packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Remove all downloaded archives"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Remove obsolete downloaded archives"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Remove selected packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Remove selected packages and saved configuration"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Remove without a data snapshot"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Return to an earlier revision"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Search available packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Select an earlier package version"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The plan installs earlier package versions. Allow these version decreases?"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The transaction state is invalid."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Cannot read APT source configuration or key material: "
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Cannot read the APT configuration directory: "
+msgstr ""
+
+#: ../contents/tools/sh/messages
+msgid "Invalid quoted command arguments."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Unused dependencies"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Upgrade packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Upgrade selected packages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "snapd did not return refresh restrictions."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "The update server could not be reached. Check the network connection."
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "Waiting for a network connection"
+msgstr ""
+
+#: ../contents/ui/scrollview/Updates.qml
+msgid "Some update sources could not be checked"
+msgstr ""

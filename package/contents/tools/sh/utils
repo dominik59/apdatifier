@@ -104,6 +104,7 @@ printWhile() {
             4) printError "$WIDGETS_ERR_JSON" ;;
         esac
     fi
+    return "$exitCode"
 }
 
 qdbusCMD() {
@@ -114,9 +115,11 @@ dependencies() {
     for cmd in ${1}; do
         if ! command -v "$cmd" >/dev/null; then
             printError "${CMD_ERR} ${cmd}"
-            [ $2 ] && returnMenu || exit
+            [[ -n "$2" ]] && returnMenu
+            return 127
         fi
     done
+    return 0
 }
 
 oneLine() {
@@ -440,7 +443,9 @@ install_devel() {
 install_stable() {
     checkSetup
 
-    if [[ "$(jq -r '.KPlugin.Description' "$appletDir/metadata.json")" = "Arch Update Notifier" ]]; then
+    local description
+    description="$(jq -r '.KPlugin.Description' "$appletDir/metadata.json")"
+    if [[ "$description" == "Arch Update Notifier" || "$description" == "Package Update Notifier" ]]; then
         while true; do
             printImportant "It looks like you already have the stable version."
             printQuestion "Do you still want to proceed?"; read -r answer
@@ -517,6 +522,13 @@ uninstall() {
 }
 
 checkPkgs() {
+    if [[ -x /usr/bin/python3 ]]; then
+        local detected
+        if detected=$(/usr/bin/python3 -I -B "$scriptDir/../backends.py" capabilities 2>/dev/null); then
+            printf '%s\n' "$detected"
+            return
+        fi
+    fi
     local terms="alacritty foot ghostty gnome-terminal kitty konsole lxterminal ptyxis terminator tilix wezterm xterm yakuake"
     local utils="pacman flatpak fwupdmgr paru pikaur yay jq tmux $terms"
     for pkg in $utils; do command -v $pkg || echo; done

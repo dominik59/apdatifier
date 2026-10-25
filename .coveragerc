@@ -1,0 +1,19 @@
+[run]
+branch = True
+source_dirs = package/contents/tools
+relative_files = True
+data_file = coverage/.coverage
+
+[report]
+fail_under = 80
+precision = 2
+show_missing = True
+
+[html]
+directory = coverage/python
+
+[xml]
+output = coverage/python.xml
+
+[json]
+output = coverage/python.json

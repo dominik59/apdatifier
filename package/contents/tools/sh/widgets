@@ -2,6 +2,12 @@
 
 source "$(dirname "$0")/utils"
 
+make_widget_temp() {
+    tempDir=$(mktemp -d "${TMPDIR:-/tmp}/apdatifier-widgets.XXXXXX") || return 1
+    trap cleanup EXIT
+    trap 'for job in $(jobs -pr); do kill "$job" 2>/dev/null; done; exit 130' INT TERM
+}
+
 fetch_api_data() {
     echo '<?xml version="1.0" encoding="UTF-8"?><data>' > "$XML"
 
@@ -9,7 +15,9 @@ fetch_api_data() {
     local q="categories=705x715x719x720&sort=new&pagesize=$ps"
 
     local p0=$(mktemp "$tempDir/XXXXXX.xml")
-    curl -s -o "$p0" --connect-timeout 5 --retry 2 --max-time 60 --request GET --url "$url?$q&page=0"
+    curl --fail -s -o "$p0" --connect-timeout 5 --retry 2 --max-time 60 --request GET --url "$url?$q&page=0" || {
+        echo '</data>' >> "$XML"; return 1;
+    }
     ! xmllint --noout "$p0" 2>/dev/null && { echo '</data>' >> "$XML"; return 1; }
     case $(xmllint --xpath "string(//ocs/meta/statuscode)" "$p0") in
         ""|200) echo '</data>' >> "$XML"; return 2;;
@@ -27,7 +35,9 @@ fetch_api_data() {
         f=$(mktemp "$tempDir/XXXXXX.xml"); files+=("$f")
         args+=(-o "$f" --url "$url?$q&page=$p")
     done
-    curl -s --parallel --parallel-immediate --connect-timeout 5 --retry 2 --max-time 60 "${args[@]}"
+    curl --fail -s --parallel --parallel-immediate --connect-timeout 5 --retry 2 --max-time 60 "${args[@]}" || {
+        echo '</data>' >> "$XML"; return 1;
+    }
 
     for f in "${files[@]}"; do
         xmllint --noout "$f" 2>/dev/null || { echo '</data>' >> "$XML"; return 2; }
@@ -132,7 +142,10 @@ get_download_link() {
     done < <(xmllint --xpath "//content[id='$contentId']/*" "$XML" | grep -o 'download_version[0-9]\+' | uniq)
 
     if [[ $files -eq 1 || ${#signed[@]} -eq 1 ]]; then
-        echo $(xmllint --xpath "string(//id[text()='$contentId']/../downloadlink${signed[0]:-1})" "$XML") > "$tempDir/link"
+        local link
+        link=$(xmllint --xpath "string(//id[text()='$contentId']/../downloadlink${signed[0]:-1})" "$XML") || return 1
+        [[ "$link" == https://* || "$link" == http://* ]] || return 1
+        printf '%s\n' "$link" > "$tempDir/link" || return 1
         return 0
     else
         [[ $files -eq 0 ]] && return 1
@@ -160,7 +173,8 @@ make_updates_list() {
           --arg VO "$currentVer" \
           --arg VN "$latestVer" \
           --arg LN "$url" \
-          '{NM:$NM,RE:$RE,TP:$TP,CN:$CN,IN:$IN,DE:$DE,AU:$AU,VO:$VO,VN:$VN,LN:$LN}' >> "$tmp"
+          --arg nativeId "$(basename "$package")" \
+          '{NM:$NM,RE:$RE,TP:$TP,CN:$CN,IN:$IN,DE:$DE,AU:$AU,VO:$VO,VN:$VN,LN:$LN,backend:"widgets",nativeId:$nativeId,uid:("widgets:"+$nativeId)}' >> "$tmp"
     done
 
     jq -s '.' "$tmp" > "$updatesList"
@@ -178,7 +192,8 @@ check_packages_updates() {
         exit
     }
 
-    makeTempDir
+    dependencies "curl xmllint" || return $?
+    make_widget_temp || return $?
     XML="$tempDir/api.kde-look.xml"
     updatesList="$tempDir/update.list.json"
     trap cleanup EXIT
@@ -191,34 +206,62 @@ check_packages_updates() {
     esac
 
     make_updates_list
-    jq . $updatesList
+    jq . "$updatesList"
+}
+
+package_metadata() {
+    local directory="$tempDir/package/unpacked"
+    local files=()
+    if [[ -f "$directory/metadata.json" ]]; then
+        printf '%s\n' "$directory/metadata.json"
+        return 0
+    fi
+    mapfile -d '' -t files < <(find "$directory" -mindepth 2 -maxdepth 2 -type f -name metadata.json -print0)
+    if [[ ${#files[@]} -eq 0 ]]; then
+        mapfile -d '' -t files < <(find "$directory" -type f -name metadata.json -print0)
+    fi
+    [[ ${#files[@]} -gt 0 ]] || return 3
+    [[ ${#files[@]} -eq 1 ]] || return 4
+    printf '%s\n' "${files[0]}"
+}
+
+unpack_package() {
+    local archive="$1" directory="$2"
+    if command -v bsdtar >/dev/null; then
+        bsdtar -xf "$archive" -C "$directory" || return 2
+    elif command -v unzip >/dev/null && unzip -tqq "$archive" </dev/null >/dev/null 2>&1; then
+        unzip -oq "$archive" -d "$directory" </dev/null || return 2
+    elif command -v tar >/dev/null; then
+        tar -xf "$archive" -C "$directory" || return 2
+    elif command -v unzip >/dev/null; then
+        return 2
+    else
+        printError "$CMD_ERR bsdtar / tar / unzip"
+        return 127
+    fi
 }
 
 download_package() {
-    mkdir -p "$tempDir/$name/unpacked"
-    link=$(cat "$tempDir/link")
-    package="$tempDir/$name/$(basename "${link}")"
+    local directory="$tempDir/package" archive="$tempDir/package/archive"
+    local link metadata json
+    rm -rf "$directory"
+    mkdir -p "$directory/unpacked" || return 1
+    link=$(cat "$tempDir/link") || return 1
+    curl --fail -s -o "$archive" --connect-timeout 5 --retry 2 --max-time 120 --request GET --location --url "$link" 2>/dev/null || return 1
+    [[ -s "$archive" ]] || return 1
 
-    curl -s -o "$package" --connect-timeout 5 --retry 2 --max-time 120 --request GET --location --url "$link" 2>/dev/null
-
-    [ ! -s "$package" ] && return 1
-    
-    bsdtar -xf "$package" -C "$tempDir/$name/unpacked" || return 2
-
-    metadata=$(find "$tempDir/$name/unpacked" -name metadata.json)
-    [ -z "metadata" ] && return 3
+    unpack_package "$archive" "$directory/unpacked" || return $?
+    metadata=$(package_metadata) || return $?
 
     jq . "$metadata" >/dev/null 2>&1 || return 4
 
-    if ! jq -e ".KPackageStructure == \"$type\"" "$metadata" >/dev/null 2>&1; then
-        updateJson "$metadata" "$(jq ". + { \"KPackageStructure\": \"$type\" }" "$metadata")"
-    fi
-
-    updateJson "$metadata" "$(jq --arg new_value "$latestVer" '.KPlugin.Version = $new_value' "$metadata")"
+    json=$(jq --arg type "$type" --arg version "$latestVer" '.KPackageStructure = $type | .KPlugin.Version = $version' "$metadata") || return 4
+    updateJson "$metadata" "$json" || return 4
 
     if [[ $name == "apdatifier" && $trayEnabledByDefault == "true" ]]; then
         if jq -e '.KPlugin.EnabledByDefault == false' "$metadata" > /dev/null; then
-            updateJson "$metadata" "$(jq '.KPlugin.EnabledByDefault = true' "$metadata")"
+            json=$(jq '.KPlugin.EnabledByDefault = true' "$metadata") || return 4
+            updateJson "$metadata" "$json" || return 4
         fi
     fi
 
@@ -226,26 +269,23 @@ download_package() {
 }
 
 upgrade_all_packages() {
-    dependencies "jq"
+    dependencies "jq curl xmllint kpackagetool6" || return $?
 
     declare -a packages
     ! get_packages && {
         printDone "$MNG_DONE"
-        exit
+        return 0
     }
 
-    makeTempDir
+    make_widget_temp || return $?
     XML="$tempDir/api.kde-look.xml"
     updatesList="$tempDir/update.list.json"
-    trap cleanup EXIT
-    trap 'kill "$bg_pid" 2>/dev/null; cleanup' INT TERM
 
     fetch_api_data & bg_pid=$!
-    printWhile "$bg_pid" "$WIDGETS_FETCH"
-    [[ $exitCode -ne 0 ]] && exit
+    printWhile "$bg_pid" "$WIDGETS_FETCH" || return $?
 
     make_updates_list & bg_pid=$!
-    printWhile "$bg_pid" "$WIDGETS_CHECK"
+    printWhile "$bg_pid" "$WIDGETS_CHECK" || return $?
 
     if [[ -s "$updatesList" ]] && jq -e '(. | length) > 0' "$updatesList" > /dev/null 2>&1; then
         echo
@@ -269,7 +309,7 @@ upgrade_all_packages() {
             done
         fi
 
-        updated=false
+        local updated=false result=0 metadata
         while read -r info; do
             name=$(echo "$info" | jq -r '.NM')
             contentId=$(echo "$info" | jq -r '.CN')
@@ -279,36 +319,41 @@ upgrade_all_packages() {
             echo "$(colorize blue bold "$ICO_EXEC $name ($latestVer)")"
 
             get_download_link & printWhile $! "$WIDGETS_LINK"
-            [[ $exitCode -ne 0 ]] && { echo; continue; }
+            [[ $exitCode -ne 0 ]] && { result=1; echo; continue; }
 
             download_package & printWhile $! "$WIDGETS_DOWNLOADING"
-            [[ $exitCode -ne 0 ]] && { echo; continue; }
+            [[ $exitCode -ne 0 ]] && { result=1; echo; continue; }
 
-            kpackagetool6 -t "$type" -u "$(dirname "$(find "$tempDir/$name" -name "metadata.json")")" 2>/dev/null
-            updated=true
+            metadata=$(package_metadata) || { result=1; continue; }
+            if kpackagetool6 -t "$type" -u "$(dirname "$metadata")"; then
+                updated=true
+            else
+                result=1
+            fi
             sleep 1
             echo
         done < <(jq -c 'sort_by(.NM)[]' "$updatesList")
 
-        [[ $updated = true ]] && restartPlasmashell
+        [[ $updated = true ]] && (restartPlasmashell)
+        return "$result"
     else
         printDone "$MNG_DONE"
     fi
+    return 0
 }
 
 upgrade_package() {
-    [ -n "$1" ] && contentId="$1" || exit
-    [ -n "$2" ] && name="$2" || exit
+    [[ "$1" =~ ^[0-9]+$ && -n "$2" ]] || return 2
+    contentId="$1"
+    name="$2"
 
-    dependencies "jq"
+    dependencies "jq curl xmllint kpackagetool6" || return $?
 
-    mkdir -p "$tempDir/$name/unpacked"
-    XML="$tempDir/$name/api.kde-look.xml"
-
-    trap 'kill "$bg_pid" 2>/dev/null; cleanup' INT TERM EXIT
+    make_widget_temp || return $?
+    XML="$tempDir/api.kde-look.xml"
 
     {
-        curl -s -o "$XML" --connect-timeout 5 --retry 2 --max-time 60 --request GET --url "https://api.kde-look.org/ocs/v1/content/data/$contentId" 2>/dev/null
+        curl --fail -s -o "$XML" --connect-timeout 5 --retry 2 --max-time 60 --request GET --url "https://api.kde-look.org/ocs/v1/content/data/$contentId" 2>/dev/null || return 1
         if xmllint --noout "$XML" 2>/dev/null; then
             statuscode=$(xmllint --xpath "string(//ocs/meta/statuscode)" "$XML")
             case $statuscode in
@@ -320,25 +365,25 @@ upgrade_package() {
             return 1
         fi
     } & bg_pid=$!
-    printWhile "$bg_pid" "$WIDGETS_FETCH"
-    [[ $exitCode -ne 0 ]] && exit
+    printWhile "$bg_pid" "$WIDGETS_FETCH" || return $?
 
     latestVer=$(clearVer "$(xmllint --xpath "string(//id[text()='$contentId']/../version)" "$XML")")
     type=$(get_package_type)
 
     get_download_link & bg_pid=$!
-    printWhile "$bg_pid" "$WIDGETS_LINK"
-    [[ $exitCode -ne 0 ]] && exit
+    printWhile "$bg_pid" "$WIDGETS_LINK" || return $?
 
     download_package & bg_pid=$!
-    printWhile "$bg_pid" "$WIDGETS_DOWNLOADING"
-    [[ $exitCode -ne 0 ]] && exit
+    printWhile "$bg_pid" "$WIDGETS_DOWNLOADING" || return $?
 
-    kpackagetool6 -t "$type" -u "$(dirname "$(find "$tempDir/$name" -name "metadata.json")")" 2>/dev/null
+    local metadata
+    metadata=$(package_metadata) || return $?
+    kpackagetool6 -t "$type" -u "$(dirname "$metadata")" || return $?
     sleep 1
     echo
 
-    restartPlasmashell
+    (restartPlasmashell)
+    return 0
 }
 
 list_current_packages() {
@@ -350,16 +395,17 @@ list_current_packages() {
         local json="$package/metadata.json"; [ -s "$json" ] || continue
         local name="$(jq -r '.KPlugin.Name' "$json")"; [ -z "$name" ] && continue
         local currentVer=$(clearVer "$(jq -r '.KPlugin.Version' "$json")"); [ -z "$currentVer" ] && continue
-        out+="{\"NM\": \"${name}\","
-        out+="\"VO\": \"${currentVer}\"},\n"
+        out+="$(jq -cn --arg NM "$name" --arg VO "$currentVer" \
+            --arg nativeId "$(basename "$package")" \
+            '{NM:$NM,VO:$VO,backend:"widgets",nativeId:$nativeId,uid:("widgets:"+$nativeId)}'),"
     done
-    echo -e $out
+    printf '%s\n' "$out"
 }
 
 case "$1" in
           "list") list_current_packages;;
          "check") check_packages_updates;;
-       "upgrade") shift; upgrade_package $1 $2;;
+       "upgrade") shift; upgrade_package "$1" "$2";;
     "upgradeAll") upgrade_all_packages;;
                *) exit;;
 esac

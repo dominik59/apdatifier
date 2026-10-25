@@ -20,6 +20,9 @@ SimpleKCM {
 
     property alias cfg_arch: arch.checked
     property alias cfg_aur: aur.checked
+    property alias cfg_apt: apt.checked
+    property alias cfg_snap: snap.checked
+    property string cfg_aptUpgradeMode: plasmoid.configuration.aptUpgradeMode
     property alias cfg_flatpak: flatpak.checked
     property alias cfg_fwupd: fwupd.checked
     property alias cfg_widgets: widgets.checked
@@ -271,6 +274,50 @@ SimpleKCM {
                     font.pointSize: instTip.font.pointSize
                     color: instTip.color
                     visible: !aur.enabled
+                }
+            }
+
+            RowLayout {
+                CheckBox {
+                    id: apt
+                    text: i18n("APT packages")
+                    enabled: Boolean(pkg.apt && pkg.python3)
+                }
+                Label {
+                    visible: !apt.enabled
+                    text: i18n("Needs system Python 3 and APT")
+                    font: Kirigami.Theme.smallFont
+                }
+            }
+
+            RowLayout {
+                visible: apt.checked
+                Kirigami.FormData.label: i18n("APT upgrade mode") + ":"
+                ComboBox {
+                    textRole: "name"
+                    model: pkg.neon ? [
+                        { name: i18n("Automatic for this distribution"), value: "auto" },
+                        { name: i18n("Full: allow dependency removals"), value: "full" }
+                    ] : [
+                        { name: i18n("Automatic for this distribution"), value: "auto" },
+                        { name: i18n("Safe: keep installed packages"), value: "safe" },
+                        { name: i18n("Full: allow dependency removals"), value: "full" }
+                    ]
+                    currentIndex: JS.setIndex(cfg_aptUpgradeMode, model)
+                    onActivated: cfg_aptUpgradeMode = model[currentIndex].value
+                }
+            }
+
+            RowLayout {
+                CheckBox {
+                    id: snap
+                    text: i18n("Snap packages")
+                    enabled: Boolean(pkg.snap && pkg.python3)
+                }
+                Label {
+                    visible: !snap.enabled
+                    text: i18n("Needs existing snapd and system Python 3")
+                    font: Kirigami.Theme.smallFont
                 }
             }
 

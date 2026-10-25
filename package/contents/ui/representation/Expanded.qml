@@ -76,6 +76,8 @@ Representation {
 
         readonly property var sources: [
             (cfg.arch || cfg.aur) ? { t: i18n("System packages"), i: "apdatifier-package", a: "system" } : null,
+            cfg.apt     ? { t: "APT",            i: "apdatifier-package", a: "apt" } : null,
+            cfg.snap    ? { t: "Snap",           i: "apdatifier-package", a: "snap" } : null,
             cfg.flatpak  ? { t: "Flatpak",         i: "apdatifier-flatpak", a: "flatpak" } : null,
             cfg.widgets  ? { t: i18n("Widgets"),   i: "start-here-kde-plasma-symbolic", a: "widgets" } : null,
             cfg.fwupd    ? { t: i18n("Firmware"),  i: "application-x-firmware", a: "fwupd" } : null
@@ -187,7 +189,7 @@ Representation {
                     id: managementButton
                     tooltipText: i18n("Management")
                     iconSource: cfg.ownIconsUI ? svg("toolbar_management") : "tools"
-                    enabled: !sts.busy && pkg.pacman !== "" && cfg.terminal
+                    enabled: !sts.busy && (pkg.pacman || pkg.apt || pkg.snap) && cfg.terminal
                     visible: enabled && cfg.managementButton
                     onClicked: { buttonTooltip.hide(); JS.management() }
                 }

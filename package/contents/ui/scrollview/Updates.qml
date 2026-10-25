@@ -122,6 +122,7 @@ Item {
                                 Label {
                                     Layout.fillWidth: true
                                     text: model.NM
+                                    textFormat: Text.PlainText
                                     color: model.IM ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
                                     elide: Text.ElideRight
                                     font.weight: Font.DemiBold
@@ -249,11 +250,13 @@ Item {
                                         text: {
                                             if (header)
                                                 return "<b>" + delegateItem.pkg[index] + ":</b>"
-                                            if (delegateItem.pkg[index].indexOf("://") !== -1)
-                                                return "<a href=\"" + delegateItem.pkg[index] + "\">" + delegateItem.pkg[index] + "</a>"
+                                            if (index !== 1 && /^https?:\/\//.test(delegateItem.pkg[index]))
+                                                return "<a href=\"" + JS.escapeHTML(delegateItem.pkg[index]) + "\">" + JS.escapeHTML(delegateItem.pkg[index]) + "</a>"
                                             return delegateItem.pkg[index]
                                         }
-                                        textFormat: header ? Text.StyledText : (delegateItem.pkg[index].indexOf("://") !== -1 || delegateItem.pkg[index].indexOf("<font") !== -1) ? Text.StyledText : Text.PlainText
+                                        textFormat: header || (index === 1 && cfg.highlightVersionDiff) ||
+                                            (index !== 1 && /^https?:\/\//.test(delegateItem.pkg[index]))
+                                            ? Text.StyledText : Text.PlainText
                                         wrapMode: header ? Text.NoWrap : Text.WordWrap
                                         onLinkActivated: Qt.openUrlExternally(link)
                                     }
@@ -269,10 +272,10 @@ Item {
                                 // Layout.alignment: Qt.AlignHCenter
                                 Layout.alignment: Qt.AlignRight
                                 Layout.rightMargin: Kirigami.Units.largeSpacing
-                                visible: (model.ID || model.CN) && cfg.terminal
+                                visible: (model.ID || model.CN || model.backend === "apt" || model.backend === "snap") && cfg.terminal
                                 icon.name: "edit-download"
                                 text: i18n("Upgrade package")
-                                onClicked: JS.upgradePackage(model.NM, model.ID, model.CN)
+                                onClicked: JS.upgradePackage(model)
                             }
 
                             Item {
@@ -284,6 +287,12 @@ Item {
                                 const F = [
                                     ["VD", i18n("Version diff")],
                                     ["RE", i18n("Repository")],
+                                    ["backend", i18n("Package source")],
+                                    ["architecture", i18n("Architecture")],
+                                    ["installedRevision", i18n("Installed revision")],
+                                    ["candidateRevision", i18n("Available revision")],
+                                    ["state", i18n("Update state")],
+                                    ["stale", i18n("Repository data")],
                                     ["TP", i18n("Package type")],
                                     ["DE", i18n("Description")],
                                     ["AU", i18n("Author")],
@@ -312,6 +321,10 @@ Item {
 
                                     if (k === "VD") {
                                         value = cfg.highlightVersionDiff ? versionDiff(model.VO, model.VN) : `${model.VO} → ${model.VN}`
+                                    } else if (k === "stale") {
+                                        value = model.synchronizedAt
+                                            ? i18n("Old result from %1", Qt.formatDateTime(new Date(model.synchronizedAt)))
+                                            : i18n("No successful repository refresh")
                                     } else if (k === "RN") {
                                         value = model.RN === "explicit" ? i18n("Explicitly installed")
                                               : model.RN === "dependency" ? i18n("Installed as a dependency")
@@ -333,11 +346,13 @@ Item {
             anchors.centerIn: parent
             width: parent.width - (Kirigami.Units.largeSpacing * 4)
 
-            active: !sts.count
+            active: !modelList.count
             sourceComponent: Kirigami.PlaceholderMessage {
                 width: parent.width - (Kirigami.Units.largeSpacing * 4)
-                icon.name: "checkmark"
-                text: i18n("System updated")
+                icon.name: !isOnline ? "network-offline" : sts.error ? "dialog-warning" : "checkmark"
+                text: !isOnline ? i18n("Waiting for a network connection")
+                    : sts.error ? i18n("Some update sources could not be checked")
+                    : i18n("System updated")
             }
         }
     }
@@ -373,6 +388,7 @@ Item {
 
             Label {
                 id: label
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 font: Kirigami.Theme.smallFont
                 color: Qt.lighter(bgColor, 3)
@@ -389,7 +405,7 @@ Item {
             property int hAlign: Text.AlignLeft
 
             horizontalAlignment: hAlign
-            text: cfg.highlightVersionDiff ? versionDiff(oldVer, newVer) : `${oldVer} → ${newVer}`
+            text: cfg.highlightVersionDiff ? versionDiff(oldVer, newVer) : `${JS.escapeHTML(oldVer)} → ${JS.escapeHTML(newVer)}`
             font: Kirigami.Theme.smallFont
             textFormat: Text.StyledText
             elide: Text.ElideRight
@@ -399,7 +415,7 @@ Item {
 
     function versionDiff(oldVer, newVer) {
         if (!oldVer || !newVer) return ""
-        if (oldVer === newVer) return oldVer
+        if (oldVer === newVer) return JS.escapeHTML(oldVer)
 
         let i = 0
         while (i < oldVer.length && i < newVer.length && oldVer[i] === newVer[i]) {
@@ -410,6 +426,6 @@ Item {
         const oldDiff = oldVer.slice(i)
         const newDiff = newVer.slice(i)
 
-        return `${prefix}<font color="${Kirigami.Theme.negativeTextColor}">${oldDiff}</font> → ${prefix}<font color="${Kirigami.Theme.positiveTextColor}">${newDiff}</font>`
+        return `${JS.escapeHTML(prefix)}<font color="${Kirigami.Theme.negativeTextColor}">${JS.escapeHTML(oldDiff)}</font> → ${JS.escapeHTML(prefix)}<font color="${Kirigami.Theme.positiveTextColor}">${JS.escapeHTML(newDiff)}</font>`
     }
 }

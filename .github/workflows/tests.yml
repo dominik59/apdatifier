@@ -1,0 +1,54 @@
+name: Tests and coverage
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.14"]
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Check native test tools already present on the runner
+        run: |
+          for tool in bash jq tar unzip xz apt-get apt-cache apt-config dpkg-query; do
+            command -v "$tool" >/dev/null || exit 1
+          done
+      - name: Test Python, JavaScript, and isolated shell operations with coverage gates
+        run: ./tests/run_coverage.sh
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-${{ matrix.python }}
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Check script syntax
+        run: |
+          node --check package/contents/tools/tools.js
+          for script in package/contents/tools/sh/*; do
+            # messages is translation data, not a shell program.
+            case "$script" in */messages) continue ;; esac
+            if head -n 1 "$script" | grep -q bash; then bash -n "$script"; fi
+          done
+      - name: Compile QML when development bindings are already available
+        run: python3 -B tests/check_qml.py
