@@ -38,9 +38,11 @@ kpackagetool6 -t Plasma/Applet -u ./package
 The fork uses the same widget ID, `com.github.exequtic.apdatifier`, and replaces
 an existing user installation. Both versions share the same settings.
 
-Add **Apdatifier** through Plasma's **Add Widgets** menu, or enable it in
-**System Tray Settings**. If Plasma still shows the earlier version,
-[reload Plasma](#reload-plasma).
+Apdatifier is enabled in the system tray by default. Its icon stays visible even
+when no updates are available. Plasma keeps earlier explicit tray preferences;
+if you previously disabled or hid Apdatifier, enable it in **System Tray Settings**.
+You can also add it to a panel or desktop through **Add Widgets**.
+If Plasma still shows the earlier version, [reload Plasma](#reload-plasma).
 
 ## Updating
 

@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Request ID | CR-APT-SNAP-001 |
-| Revision | 2.2 |
+| Revision | 2.3 |
 | Date | 2026-10-25 |
 | Last update | 2026-10-26 |
 | Product | Apdatifier |
@@ -1536,6 +1536,20 @@ README coverage results were refreshed by that command.
 No host packages, installed applet files, or running desktop settings were changed.
 Update the installed applet and reload Plasma to load the corrected JavaScript.
 
+### 17.14 Default system tray visibility on 2026-10-26
+
+The owner requested a visible widget by default.
+Package metadata now enables the system tray entry by default. [S33]
+The trayEnabledByDefault configuration default is also true.
+The existing hideIconPolicy default remains zero.
+The icon therefore remains visible when no updates are available.
+
+Plasma keeps previously saved tray choices. [S34]
+An existing explicit disable or hide setting needs a manual change in System Tray Settings.
+README installation instructions explain the new default and that existing-setting case.
+JSON and XML validation confirmed both true defaults and the zero hide threshold.
+No application logic or installed desktop configuration changed.
+
 ## 18. Sources
 
 The source review date is 2026-10-24.
@@ -1576,3 +1590,5 @@ The requirements above define the selected product design.
 | S30 | [Shields static badges](https://shields.io/badges/static-badge) | Labels, messages, percentage encoding, colors, and flat badge style; checked on 2026-10-25 |
 | S31 | [APT simulation implementation](https://github.com/Debian/apt/blob/main/apt-pkg/algorithms.cc) | Repeated dependency annotations from pkgSimulate::RealInstall and ShortBreaks; checked on 2026-10-25 |
 | S32 | [Qt dynamic QML object creation](https://doc.qt.io/qt-6/qtqml-javascript-dynamicobjectcreation.html) | Object parents, creation contexts, and deletion; checked on 2026-10-26 |
+| S33 | [KDE widget properties](https://develop.kde.org/docs/plasma/widget/properties/#x-plasma-notificationarea-system-tray) | Default system tray activation through EnabledByDefault; checked on 2026-10-26 |
+| S34 | [Plasma 6.6 tray plugin registration](https://github.com/KDE/plasma-workspace/blob/Plasma/6.6/applets/systemtray/plasmoidregistry.cpp) | Saved choices for already known plugins; checked on 2026-10-26 |
