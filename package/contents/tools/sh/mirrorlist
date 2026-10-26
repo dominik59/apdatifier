@@ -30,9 +30,10 @@ rank_mirrors() {
         url="${url//'$repo'/core}"
         url="${url}/core.db"
 
-        local response=$(curl -s -m 9 -w "%{time_total} %{http_code}" "$url" -o /dev/null 2>/dev/null)
+        local response
+        response=$(curl -s -m 9 -w "%{time_total} %{http_code}" "$url" -o /dev/null 2>/dev/null)
         local exit_code=$?
-        local time status
+        local time="" status=""
         
         if [[ $exit_code -ne 0 ]]; then
             status="Unreachable"
@@ -72,7 +73,7 @@ validate() {
     return 0
 }
 
-mirrorfile="/etc/pacman.d/mirrorlist"
+mirrorfile="${APDATIFIER_MIRRORLIST_FILE:-/etc/pacman.d/mirrorlist}"
 OUTDATED=false
 [[ ! -f "$mirrorfile" ]] && {
     NORM_TIME="(no file)"
@@ -82,7 +83,7 @@ OUTDATED=false
     NORM_TIME=$(date -d @"$FILE_TIME" +"%d %b %H:%M:%S")
     CURR_TIME=$(date +%s)
     [[ "$mirrors" == "age" && $MENU -eq 0 ]] && {
-        (( CURR_TIME - FILE_TIME >= mirrorsAge * 86400 )) && OUTDATED=true || exit
+        (( CURR_TIME - FILE_TIME >= mirrorsAge * 86400 )) && OUTDATED=true || exit 0
     }
 }
 
@@ -109,7 +110,6 @@ if ! validate "$rankmirrors_mirrorlist"; then
     printError "No server entries found."
     (( MENU )) && returnMenu || exit
 fi
-
 if [ "$mirrorProgress" = true ]; then
     echo -e "$(colorize blue bold "$ICO_MIRRORS $MIRRORS_RANK")"
     rank_mirrors
@@ -132,3 +132,4 @@ else
     printError "$MIRRORS_SUDO"
     (( MENU )) && returnMenu || exit
 fi
+exit 0

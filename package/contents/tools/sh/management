@@ -429,7 +429,7 @@ rebuildPython() {
             printQuestion "$MNG_RESUME"; read -r answer
             case "$answer" in
                     [Yy]*) echo; break;;
-                 [Nn]*|"") echo; pressReturn;;
+                 [Nn]*|"") echo; pressReturn; tui_restore; return;;
                         *)  ;;
             esac
         done
@@ -445,7 +445,7 @@ recentlyInstalled() {
 
     echo "$MNG_RECENT_SCAN"
 
-    local log="/var/log/pacman.log"
+    local log="${APDATIFIER_PACMAN_LOG_FILE:-/var/log/pacman.log}"
     if [[ ! -f "$log" ]]; then
         printError "Pacman log file not found."
         pressReturn

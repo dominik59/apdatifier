@@ -71,6 +71,7 @@ printClose() {
     read -r
     tput cnorm
     [[ $(basename "$terminal") = "yakuake" ]] && qdbusCMD sessions removeSession "$(qdbusCMD sessions activeSessionId)"
+    return 0
 }
 
 printWhile() {
@@ -170,7 +171,7 @@ restartPlasmashell() {
             printQuestion "$WIDGETS_RESTART"; read -r answer
             case "$answer" in
                     [Yy]*) break;;
-                 [Nn]*|"") exit;;
+                 [Nn]*|"") exit 0;;
                         *)  ;;
             esac
         done
@@ -339,6 +340,7 @@ sync_dbs() {
         echo "Failed to synchronize pacman databases" >&2
         exit 1
     }
+    return 0
 }
 
 checkCurrentVersions() {
@@ -369,7 +371,7 @@ checkSetup() {
     if (( systemWide )); then
         printError "Operation not permitted - the widget is installed system-wide"
         printClose
-        exit
+        exit 1
     fi
 }
 
@@ -380,14 +382,14 @@ install_devel() {
     echo
 
     required="git jq"
-    for cmd in ${required}; do command -v "$cmd" >/dev/null || { printError "Required installed ${cmd}"; printClose; exit; }; done;
+    for cmd in ${required}; do command -v "$cmd" >/dev/null || { printError "Required installed ${cmd}"; printClose; exit 127; }; done;
 
     commit=$(curl -s https://api.github.com/repos/exequtic/apdatifier/commits/main | jq -r '.sha' | cut -c1-7)
 
     if [[ "github commit: $commit" = "$(jq -r '.KPlugin.Description' "$appletDir/metadata.json")" ]]; then
         printDone "Up to date"
         printClose
-        exit
+        exit 0
     fi
 
     savedir=$(pwd)
@@ -396,13 +398,13 @@ install_devel() {
 
     { git clone -n --depth=10 --filter=tree:0 -b main https://github.com/exequtic/apdatifier 2>/dev/null
     } & printWhile $! "Clone main branch"
-    [[ $exitCode -ne 0 ]] && { printClose; exit; }
+    [[ $exitCode -ne 0 ]] && { printClose; exit "$exitCode"; }
 
     cd apdatifier
 
     { git sparse-checkout set --no-cone package 2>/dev/null && git checkout 2>/dev/null
     } & printWhile $! "Checkout package directory"
-    [[ $exitCode -ne 0 ]] && { printClose; exit; }
+    [[ $exitCode -ne 0 ]] && { printClose; exit "$exitCode"; }
 
     if command -v less &>/dev/null; then
         echo
@@ -416,7 +418,7 @@ install_devel() {
     echo
     cd package || exit 1
     updateJson metadata.json "$(jq --arg new_value "github commit: $commit" '.KPlugin.Description = $new_value' metadata.json)"
-    [[ $trayEnabledByDefault == "true" ]] && updateJson $metadata "$(jq '.KPlugin.EnabledByDefault = true' $metadata)"
+    [[ $trayEnabledByDefault == "true" ]] && updateJson metadata.json "$(jq '.KPlugin.EnabledByDefault = true' metadata.json)"
     while true; do
         printQuestion "Do you want build translations?"; read -r answer
         case "$answer" in
@@ -427,17 +429,27 @@ install_devel() {
     done
     echo
     tar --exclude=./apdatifier.tar -cf apdatifier.tar .
-    kpackagetool6 -t Plasma/Applet -u apdatifier.tar 2>/dev/null
+    local result=$?
+    if [[ $result -eq 0 ]]; then
+        kpackagetool6 -t Plasma/Applet -u apdatifier.tar 2>/dev/null
+        result=$?
+    fi
     echo
 
     cd "$savedir"
     [ ! -d "$clonedir" ] || rm -rf "$clonedir"
 
+    if [[ $result -ne 0 ]]; then
+        printClose
+        exit "$result"
+    fi
+
     restartShell=true
     restartPlasmashell
+    result=$?
 
     printClose
-    exit
+    exit "$result"
 }
 
 install_stable() {
@@ -451,7 +463,7 @@ install_stable() {
             printQuestion "Do you still want to proceed?"; read -r answer
             case "$answer" in
                    [Yy]*) break;;
-                [Nn]*|"") printClose; exit;;
+                [Nn]*|"") printClose; exit 0;;
                        *)  ;;
             esac
         done
@@ -478,7 +490,7 @@ uninstall() {
         printQuestion "Continue?"; read -r answer
         case "$answer" in
                [Yy]*) break;;
-            [Nn]*|"") printClose; exit;;
+            [Nn]*|"") printClose; exit 0;;
                    *)  ;;
         esac
     done
@@ -513,12 +525,13 @@ uninstall() {
     printImportant "Uninstall plasmoid"
     showCommand "kpackagetool6 -t Plasma/Applet -r com.github.exequtic.apdatifier"
     kpackagetool6 -t Plasma/Applet -r com.github.exequtic.apdatifier 2>/dev/null
+    local result=$?
     sleep 1; echo
 
     echo "Bye :("; sleep 1
 
     printClose
-    exit
+    exit "$result"
 }
 
 checkPkgs() {

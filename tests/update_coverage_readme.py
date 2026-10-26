@@ -3,7 +3,6 @@
 
 import argparse
 import configparser
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,7 +11,7 @@ import sys
 import tempfile
 from urllib.parse import quote
 
-from bash_coverage import SCOPE, sources
+from bash_coverage import MINIMUM, passes, validate
 
 
 BLOCKS = ("coverage-badges", "coverage-summary")
@@ -70,43 +69,8 @@ def javascript_metrics(path):
 
 
 def bash_metrics(path):
-    data = json.loads(path.read_text(encoding="utf-8"))
-    root = path.parent.parent
-    if (not isinstance(data, dict) or type(data.get("schemaVersion")) is not int
-            or data.get("schemaVersion") != 1 or data.get("scope") != SCOPE):
-        raise ValueError("The Bash report has an unknown schema or scope.")
-    if not isinstance(data.get("files"), list):
-        raise ValueError("The Bash report has no source list.")
-    expected = {source.relative_to(root).as_posix(): source for source in sources(root)}
-    seen = set()
-    covered = total = 0
-    for record in data["files"]:
-        if not isinstance(record, dict):
-            raise ValueError("The Bash source record is invalid.")
-        source = record["path"]
-        if source in seen or source not in expected:
-            raise ValueError("The Bash report repeats a source or includes an unrelated file.")
-        seen.add(source)
-        contents = expected[source].read_bytes()
-        if record["sha256"] != hashlib.sha256(contents).hexdigest():
-            raise ValueError("The Bash report describes an earlier source version.")
-        counts = record["lines"]
-        if not isinstance(counts, dict):
-            raise ValueError("The Bash line counters are invalid.")
-        for line, count in counts.items():
-            if (not line.isdigit() or str(int(line)) != line or not 0 < int(line) <= len(contents.splitlines())
-                    or type(count) is not int or count < 0):
-                raise ValueError("The Bash line counters are invalid.")
-        hits = sum(count > 0 for count in counts.values())
-        if (type(record["covered"]) is not int or type(record["total"]) is not int
-                or record["covered"] != hits or record["total"] != len(counts)):
-            raise ValueError("The Bash file totals do not match their line counters.")
-        covered += hits
-        total += len(counts)
-    if (seen != set(expected) or type(data["covered"]) is not int or type(data["total"]) is not int
-            or data["covered"] != covered or data["total"] != total):
-        raise ValueError("The Bash report omits sources or has inconsistent totals.")
-    return [percentage(covered, total)]
+    data = validate(path.parent.parent, json.loads(path.read_text(encoding="utf-8")))
+    return [percentage(data["covered"], data["total"]), data["files"]]
 
 
 def badge(label, value, passed=None):
@@ -174,28 +138,30 @@ def update(root, exit_code, phase, python_status, javascript_status, javascript_
         ("JavaScript", javascript_status, root / "coverage/javascript.lcov", javascript_metrics),
         ("Bash", bash_status, root / "coverage/bash.json", bash_metrics),
     ):
-        width = 1 if name == "Bash" else 3
+        width = 2 if name == "Bash" else 3
         if status == "not-run":
             results.append([None] * width)
             continue
         try:
             results.append(loader(path))
-        except (OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError, ImportError) as error:
             results.append([None] * width)
             diagnostics.append(f"{name} coverage report is missing or invalid.")
+            print(f"{name} report: {error}", file=sys.stderr)
     python, javascript, bash = results
     # Match coverage.py's configured precision and its exact 100% requirement.
     python_passed = python[0] is not None and (
         python[0] == 100 if python_threshold == 100 else round(python[0], precision) >= python_threshold)
     javascript_passed = [value is not None and value >= minimum
                          for value, minimum in zip(javascript, javascript_thresholds)]
+    bash_passed = bash[0] is not None and all(passes(file["covered"], file["total"]) for file in bash[1])
     complete = all(status != "not-run" for status in (python_status, javascript_status, bash_status))
     passed = (exit_code == 0 and complete and python_status == javascript_status == bash_status == "passed"
-              and python_passed and all(javascript_passed) and not diagnostics)
+              and python_passed and all(javascript_passed) and bash_passed and not diagnostics)
     status = "INTERRUPTED" if interrupted else "NOT RUN" if phase == "preparation" else "PASSED" if passed else "FAILED"
     badges = "\n".join((badge("Python coverage", python[0], python_passed),
                         badge("JavaScript lines", javascript[0], javascript_passed[0]),
-                        badge("Bash lines", bash[0])))
+                        badge("Bash lines", bash[0], bash_passed)))
     lines = [f"Last coverage run: **{status}**.", "",
              f"Python checks: **{python_status.upper().replace('-', ' ')}**. "
              f"JavaScript checks: **{javascript_status.upper().replace('-', ' ')}**. "
@@ -206,14 +172,24 @@ def update(root, exit_code, phase, python_status, javascript_status, javascript_
                        python, (python_threshold, None, None), (python_passed, None, None)))
     metrics += list(zip(("JavaScript: lines", "JavaScript: branches", "JavaScript: functions"),
                         javascript, javascript_thresholds, javascript_passed))
-    metrics += [("Bash: lines", bash[0], None, None)]
+    metrics += [("Bash: lines", bash[0], MINIMUM, bash_passed)]
     for label, value, minimum, met in metrics:
         display = "Unavailable" if value is None else f"{value:.2f}%"
         threshold = "Not gated" if minimum is None else f"{minimum:g}%"
         gate = "Not gated" if minimum is None else "Unavailable" if value is None else "PASS" if met else "FAIL"
         lines.append(f"| {label} | {display} | {threshold} | {gate} |")
+    if bash[1] is not None:
+        files = sorted(bash[1], key=lambda file: file["path"])
+        count = sum(passes(file["covered"], file["total"]) for file in files)
+        lines += ["", f"Bash files meeting the {MINIMUM}% minimum: **{count}/{len(files)}**.", "",
+                  "| Script | Covered | Total | Coverage | Minimum | Gate |",
+                  "| --- | ---: | ---: | ---: | ---: | --- |"]
+        for file in files:
+            value = percentage(file["covered"], file["total"])
+            gate = "PASS" if passes(file["covered"], file["total"]) else "FAIL"
+            lines.append(f"| `{file['path']}` | {file['covered']} | {file['total']} | {value:.2f}% | {MINIMUM}% | {gate} |")
     lines += ["", "Measured scope: `package/contents/tools/backends.py`, `package/contents/tools/tools.js`, "
-              "and all Bash scripts in `package/contents/tools/sh` (except the `messages` data resource)."]
+              "and all Bash scripts in `package/contents/tools/sh` (except the `messages` and `widgets-id` data resources)."]
     if phase == "preparation":
         lines += ["", "Environment preparation did not complete; no current coverage results are available."]
     if diagnostics:

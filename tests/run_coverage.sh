@@ -42,7 +42,7 @@ trap 'test_interrupted=true; exit 143' TERM
 
 # Only reports produced by this invocation may be published in the README.
 mkdir -p coverage
-rm -f -- coverage/python.json coverage/javascript.lcov coverage/bash.json coverage/bash.lcov
+rm -f -- coverage/python.json coverage/javascript.lcov coverage/bash.json coverage/bash.lcov coverage/bash/index.html
 test_bash_trace="$PWD/coverage/bash-traces"
 rm -rf -- "$test_bash_trace"
 mkdir -p -- "$test_bash_trace"

@@ -24,6 +24,9 @@ requirements trigger installation inside that environment.
 An incomplete existing environment produces an error and remains unchanged.
 No manual activation or global pip installation is needed.
 
+The shell integration tests use existing Bash, jq, tar, unzip, xz, and standard
+Unix utilities. The runner does not install system packages.
+
 | Setting | Purpose |
 | --- | --- |
 | `APDATIFIER_TEST_PYTHON` | Python interpreter used to create the environment |
@@ -87,14 +90,22 @@ The script writes these ignored reports, with paths relative to the repository r
 [.coveragerc](../.coveragerc) enforces 80% combined statement and branch coverage
 for `package/contents/tools/backends.py`. JavaScript requires 80% lines, 70%
 branches, and 70% functions for the complete `package/contents/tools/tools.js`.
-Either gate can fail the command. Menu and CLI code are included in the measurement.
+Any coverage gate can fail the command. Menu and CLI code are included in the measurement.
 
 The percentages cover the Python helper, JavaScript application logic, and every
 Bash script in `package/contents/tools/sh`. The `messages` translation resource
 and `widgets-id` identifier list are data and are excluded from Bash coverage. Unexecuted
-scripts remain in the Bash denominator. Bash coverage is informational, with no
-minimum threshold; a missing or invalid measurement still fails the command.
-Its badge is blue to distinguish it from the Python and JavaScript coverage gates.
+scripts remain in the Bash denominator. Each script must reach 80% line coverage.
+The same rule automatically includes new scripts and scripts in subdirectories.
+The collector and README updater share the threshold and integer comparison:
+`100 * covered >= 80 * total`. Rounding is only for display. A high overall
+percentage cannot compensate for a file below the minimum.
+
+The Bash badge displays overall line coverage but is green only when every file
+passes. A valid report with a low file result produces a red badge. Missing or
+invalid measurements produce an unavailable result and gray badge. The generated
+README table lists every script, covered and total lines, percentage, minimum,
+and gate result. Test failures remain separate from coverage badge colors.
 
 QML execution coverage is not measured. The Python suite tests Bash operations
 through substitute commands and local archives.
@@ -110,13 +121,38 @@ provide separate branch results.
 
 The hook writes locations and source snapshots to `coverage/bash-traces`.
 It does not record expanded commands or arguments. Temporary fixture copies
-contribute hits only when their names and source bytes match current application
-scripts. Modified copies are excluded. The README updater checks source hashes,
-file completeness, and counters before publishing the result.
+contribute hits only when their relative source paths and source text match current
+application scripts. Modified copies are excluded. Different files with the same
+name and contents keep independent counts. Both report validation and README
+publication compare every file's `lines` keys with `executable_lines()` from the
+current source bytes. Missing executable lines, added nonexecutable lines, and
+equal-size substitutions are rejected even when the hash and totals look valid.
+Validation also checks hashes, complete source lists, schema, and counters.
+
+Scripts with a `sh` shebang are measured through ordinary noninteractive Bash:
+`bash --noprofile --norc -- "$script" "$@"`. The shared test launcher preserves
+`BASH_ENV` and `APDATIFIER_BASH_COVERAGE_DIR`. Separate cases use the declared
+interpreter and compare output, errors, status, and fixture changes. An untraced
+direct `sh` execution adds no coverage. This is Bash execution coverage, not a
+claim of instrumentation inside `/bin/sh`.
+
+Shell fixtures use private configuration, cache, local-data, and scratch
+directories and a controlled command path. Package tools, network responses,
+desktop commands, and administrator commands are substitutes. Interactive menu
+tests use pseudo-terminals with timeouts and process-group cleanup. Optional
+`APDATIFIER_MIRRORLIST_FILE` and `APDATIFIER_PACMAN_LOG_FILE` overrides point to
+temporary files; their defaults remain `/etc/pacman.d/mirrorlist` and
+`/var/log/pacman.log`.
+
+Captured-output fixtures also use private process groups and stop remaining
+children after normal completion or a timeout. They preserve TimeoutExpired for
+the caller after cleanup.
 
 Every invocation clears earlier Bash reports and traces. Reporting still runs
 when tests fail, and independent JavaScript checks continue if Bash reporting
 fails. Reports stay local; no upload is required.
+Cleanup includes `coverage/bash/index.html` before environment preparation.
+A low coverage result keeps the current run's generated reports.
 
 References: [Bash startup files](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html),
 [Bash trap builtin](https://www.gnu.org/software/bash/manual/html_node/Bourne-Shell-Builtins.html),
@@ -124,11 +160,12 @@ and [Tree-sitter Python bindings](https://tree-sitter.github.io/py-tree-sitter/)
 
 ## Individual checks
 
-The standard helper tests need no additional Python modules. Bash collector tests
-use the pinned development parsers and skip when those parsers are absent:
+The standard helper tests need no additional Python modules. Bash collector and
+coverage publication tests use the pinned development parsers. Use the development
+environment for all coverage tests:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -m unittest discover -s tests -v
 node --test tests/test_*.js
 python3 -B tests/check_qml.py
 ```

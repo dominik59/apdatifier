@@ -42,10 +42,10 @@ class CoverageReadmeTests(unittest.TestCase):
             'SF:package/contents/tools/tools.js\nLF:100\nLH:94\nBRF:100\nBRH:75\n'
             'FNF:100\nFNH:91\nend_of_record\n')
         (self.coverage / 'bash.json').write_text(json.dumps({
-            'schemaVersion': 1, 'scope': 'package/contents/tools/sh', 'covered': 1, 'total': 2,
+            'schemaVersion': 1, 'scope': 'package/contents/tools/sh', 'covered': 2, 'total': 2,
             'files': [{'path': 'package/contents/tools/sh/upgrade',
                        'sha256': hashlib.sha256(self.shell.read_bytes()).hexdigest(),
-                       'lines': {'2': 1, '3': 0}, 'covered': 1, 'total': 2}]}))
+                       'lines': {'2': 1, '3': 1}, 'covered': 2, 'total': 2}]}))
 
     def update(self, **overrides):
         arguments = dict(root=self.root, exit_code=0, phase="complete", python_status="passed",
@@ -64,8 +64,8 @@ class CoverageReadmeTests(unittest.TestCase):
         self.assertIn('| JavaScript: functions | 91.00% | 70% | PASS |', text)
         self.assertIn('Python%20coverage-90.00%25-brightgreen?style=flat', text)
         self.assertIn('JavaScript%20lines-94.00%25-brightgreen?style=flat', text)
-        self.assertIn('| Bash: lines | 50.00% | Not gated | Not gated |', text)
-        self.assertIn('Bash%20lines-50.00%25-blue?style=flat', text)
+        self.assertIn('| Bash: lines | 100.00% | 80% | PASS |', text)
+        self.assertIn('Bash%20lines-100.00%25-brightgreen?style=flat', text)
         self.configuration.write_text('[report]\nfail_under = 95\nprecision = 2\n')
         self.assertEqual(self.update(javascript_thresholds=[95, 80, 95]), 1)
         text = self.readme.read_text()
@@ -216,14 +216,14 @@ class CoverageReadmeTests(unittest.TestCase):
         self.assertIn('Cannot update README coverage status', error.getvalue())
         self.assertNotIn('Traceback', error.getvalue())
 
-    def test_bash_coverage_is_informational_and_cannot_hide_a_measurement_failure(self):
+    def test_bash_gate_cannot_hide_low_coverage_or_a_measurement_failure(self):
         path = self.coverage / 'bash.json'
         data = json.loads(path.read_text())
         data['covered'] = data['files'][0]['covered'] = 0
-        data['files'][0]['lines']['2'] = 0
+        data['files'][0]['lines'] = {'2': 0, '3': 0}
         path.write_text(json.dumps(data))
-        self.assertEqual(self.update(), 0)
-        self.assertIn('| Bash: lines | 0.00% | Not gated | Not gated |', self.readme.read_text())
+        self.assertEqual(self.update(), 1)
+        self.assertIn('| Bash: lines | 0.00% | 80% | FAIL |', self.readme.read_text())
         self.assertEqual(self.update(bash_status='failed'), 1)
         self.assertIn('Last coverage run: **FAILED**', self.readme.read_text())
 
@@ -262,6 +262,49 @@ class CoverageReadmeTests(unittest.TestCase):
         self.shell.write_text(self.shell.read_text() + 'printf new\n')
         self.assertEqual(self.update(), 1)
         self.assertIn('| Bash: lines | Unavailable', self.readme.read_text())
+
+    def test_altered_line_sets_cannot_reduce_the_denominator(self):
+        path = self.coverage / 'bash.json'
+        original = path.read_text()
+        for action in ('omit', 'extra', 'replace'):
+            with self.subTest(action=action):
+                data = json.loads(original)
+                file = data['files'][0]
+                if action in ('omit', 'replace'):
+                    del file['lines']['3']
+                if action in ('extra', 'replace'):
+                    file['lines']['1'] = 1
+                data['total'] = file['total'] = len(file['lines'])
+                data['covered'] = file['covered'] = sum(hit > 0 for hit in file['lines'].values())
+                path.write_text(json.dumps(data))
+                self.assertEqual(self.update(), 1)
+                self.assertIn('| Bash: lines | Unavailable', self.readme.read_text())
+
+    def test_high_total_cannot_hide_one_failed_file_and_rows_are_sorted(self):
+        self.shell.write_text('#!/bin/bash\n'+'printf covered\\n\n'*100)
+        unused = self.shell.with_name('aaa-unused')
+        unused.write_text('#!/bin/bash\nprintf never\n')
+        files = [dict(path=file.relative_to(self.root).as_posix(),
+                      sha256=hashlib.sha256(file.read_bytes()).hexdigest(),
+                      lines={str(n): hit for n in range(2, count+2)}, covered=count*hit, total=count)
+                 for file,count,hit in [(self.shell,100,1),(unused,1,0)]]
+        self.coverage.joinpath('bash.json').write_text(json.dumps(dict(
+            schemaVersion=1, scope='package/contents/tools/sh', files=files, covered=100, total=101)))
+        self.assertEqual(self.update(), 1)
+        text = self.readme.read_text()
+        self.assertIn('Bash%20lines-99.01%25-red', text)
+        self.assertIn('**1/2**', text)
+        self.assertLess(text.index('`package/contents/tools/sh/aaa-unused`'),
+                        text.index('`package/contents/tools/sh/upgrade`'))
+
+    def test_missing_parser_is_unavailable_but_preparation_needs_no_parser(self):
+        with mock.patch.object(report, 'validate', side_effect=ImportError('parser absent')):
+            self.assertEqual(self.update(), 1)
+            self.assertIn('Bash%20lines-unavailable-lightgrey', self.readme.read_text())
+            self.assertIn('| Python: statements and branches | 90.00%', self.readme.read_text())
+        with mock.patch.object(report, 'validate', side_effect=AssertionError('Unexpected parser use')):
+            self.assertEqual(self.update(exit_code=2, phase='preparation', python_status='not-run',
+                                         javascript_status='not-run', bash_status='not-run'), 0)
 
 
 if __name__ == '__main__':

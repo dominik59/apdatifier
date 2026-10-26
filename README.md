@@ -8,7 +8,7 @@ widgets, and firmware updates.
 <!-- coverage-badges:start -->
 [![Python coverage: 85.52%](https://img.shields.io/badge/Python%20coverage-85.52%25-brightgreen?style=flat)](#coverage)
 [![JavaScript lines: 95.33%](https://img.shields.io/badge/JavaScript%20lines-95.33%25-brightgreen?style=flat)](#coverage)
-[![Bash lines: 31.90%](https://img.shields.io/badge/Bash%20lines-31.90%25-blue?style=flat)](#coverage)
+[![Bash lines: 91.73%](https://img.shields.io/badge/Bash%20lines-91.73%25-brightgreen?style=flat)](#coverage)
 <!-- coverage-badges:end -->
 
 [Install](#installation) · [Update](#updating) · [Uninstall](#uninstalling) · [Coverage](#coverage)
@@ -137,14 +137,30 @@ Python checks: **PASSED**. JavaScript checks: **PASSED**. Bash measurement: **PA
 | JavaScript: lines | 95.33% | 80% | PASS |
 | JavaScript: branches | 76.00% | 70% | PASS |
 | JavaScript: functions | 91.88% | 70% | PASS |
-| Bash: lines | 31.90% | Not gated | Not gated |
+| Bash: lines | 91.73% | 80% | PASS |
 
-Measured scope: `package/contents/tools/backends.py`, `package/contents/tools/tools.js`, and all Bash scripts in `package/contents/tools/sh` (except the `messages` data resource).
+Bash files meeting the 80% minimum: **9/9**.
+
+| Script | Covered | Total | Coverage | Minimum | Gate |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `package/contents/tools/sh/arguments` | 23 | 23 | 100.00% | 80% | PASS |
+| `package/contents/tools/sh/init` | 19 | 20 | 95.00% | 80% | PASS |
+| `package/contents/tools/sh/management` | 319 | 348 | 91.67% | 80% | PASS |
+| `package/contents/tools/sh/mirrorlist` | 83 | 84 | 98.81% | 80% | PASS |
+| `package/contents/tools/sh/terminal` | 31 | 31 | 100.00% | 80% | PASS |
+| `package/contents/tools/sh/upgrade` | 150 | 158 | 94.94% | 80% | PASS |
+| `package/contents/tools/sh/utils` | 304 | 335 | 90.75% | 80% | PASS |
+| `package/contents/tools/sh/vars` | 38 | 38 | 100.00% | 80% | PASS |
+| `package/contents/tools/sh/widgets` | 220 | 257 | 85.60% | 80% | PASS |
+
+Measured scope: `package/contents/tools/backends.py`, `package/contents/tools/tools.js`, and all Bash scripts in `package/contents/tools/sh` (except the `messages` and `widgets-id` data resources).
 <!-- coverage-summary:end -->
 
 `./tests/run_coverage.sh` refreshes these local results after each run, including
 failures. Commit and push README to publish changed results on GitHub.
-Bash line coverage includes unexecuted application scripts and has no minimum gate.
+Bash requires at least 80% line coverage for every application script, including
+new scripts and scripts with no recorded execution. The badge is green only when
+every file passes; the table shows each file's counts and result.
 Open `coverage/bash/index.html` for source lines and hit counts.
 See [development checks](docs/DEVELOPMENT.md) for setup, reports, and limitations.
 

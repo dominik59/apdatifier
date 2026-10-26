@@ -1,6 +1,7 @@
 """Exercise tracing against real Bash, including return codes and fixture copies."""
 
 import contextlib
+import copy
 import importlib.util
 import io
 import os
@@ -8,8 +9,10 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 import bash_coverage as report
+from shell_fixtures import bash_command, compatible_results
 
 
 @unittest.skipUnless(importlib.util.find_spec('tree_sitter') and importlib.util.find_spec('tree_sitter_bash'),
@@ -133,6 +136,83 @@ printf '%s\\n' \\
         lcov = (self.root / 'coverage/bash.lcov').read_text()
         self.assertIn('SF:package/contents/tools/sh/never\nDA:2,0\n', lcov)
         self.assertTrue((self.root / 'coverage/bash.json').is_file())
+
+    def test_integer_boundary_does_not_accept_a_rounded_percentage(self):
+        self.assertTrue(report.passes(80, 100))
+        self.assertEqual(f'{19999 / 25000 * 100:.2f}', '80.00')
+        self.assertFalse(report.passes(19999, 25000))
+        for counts in ((0, 0), (True, 1), (2, 1), (-1, 1)):
+            self.assertFalse(report.passes(*counts))
+
+    def test_exact_line_sets_reject_omissions_extras_and_equal_size_replacements(self):
+        original = self.run_shell()
+        missing = self.line('uncovered')
+        for action in ('omit', 'extra', 'replace'):
+            with self.subTest(action=action):
+                data = copy.deepcopy(original)
+                file = data['files'][0]
+                if action in ('omit', 'replace'):
+                    del file['lines'][missing]
+                if action in ('extra', 'replace'):
+                    file['lines']['1'] = 1
+                file['total'] = data['total'] = len(file['lines'])
+                file['covered'] = data['covered'] = sum(hit > 0 for hit in file['lines'].values())
+                with self.assertRaisesRegex(ValueError, 'upgrade: executable line set'):
+                    report.validate(self.root, data)
+
+    def test_nested_sources_do_not_share_hits_with_identical_names_and_contents(self):
+        self.source.write_text('#!/bin/bash\nprintf control\\n\n')
+        nested = self.scripts / 'nested/upgrade'
+        nested.parent.mkdir()
+        nested.write_bytes(self.source.read_bytes())
+        data = self.run_shell()
+        self.assertEqual([file['covered'] for file in data['files']], [0, 1])
+        self.assertEqual(len(report.sources(self.root)), 2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(report.main(['--root', str(self.root), '--trace-dir', str(self.trace)]), 1)
+        self.assertTrue((self.root / 'coverage/bash.json').exists())
+        self.assertTrue((self.root / 'coverage/bash.lcov').exists())
+        self.assertTrue((self.root / 'coverage/bash/index.html').exists())
+
+    def test_empty_script_scope_and_parser_failure_are_measurement_errors(self):
+        self.source.write_text('#!/bin/bash\n# no commands\n')
+        data = dict(schemaVersion=1, scope=report.SCOPE, files=[dict(
+            path=self.source.relative_to(self.root).as_posix(),
+            sha256=report.hashlib.sha256(self.source.read_bytes()).hexdigest(),
+            lines={}, covered=0, total=0)], covered=0, total=0)
+        with self.assertRaisesRegex(ValueError, 'empty Bash line counters'):
+            report.validate(self.root, data)
+        self.source.write_text('#!/bin/bash\nprintf okay\n')
+        data = self.run_shell()
+        with mock.patch.object(report, 'executable_lines', side_effect=ImportError('parser absent')):
+            with self.assertRaises(ImportError):
+                report.validate(self.root, data)
+        self.source.unlink()
+        with self.assertRaisesRegex(ValueError, 'scope is empty'):
+            report.collect(self.root, self.trace)
+
+    def test_sh_measurement_uses_bash_and_native_results_are_compared(self):
+        self.source.write_text('#!/bin/sh\nprintf "%s" "$1"\nprintf warning >&2\nexit 7\n')
+        self.source.chmod(0o700)
+        env = dict(os.environ, BASH_ENV=str(self.hook), APDATIFIER_BASH_COVERAGE_DIR=str(self.trace))
+        native = subprocess.run([str(self.source), 'literal $()'], capture_output=True, timeout=10, env=env)
+        self.assertFalse(list(self.trace.glob('trace-*')))
+        command = bash_command(self.source, 'literal $()')
+        self.assertEqual(command[:4], ['bash', '--noprofile', '--norc', '--'])
+        measured = subprocess.run(command, capture_output=True, timeout=10, env=env)
+        self.assertTrue(compatible_results(measured, native, {}, {}))
+        self.assertFalse(compatible_results(measured, native, {'changed': True}, {}))
+        data = report.collect(self.root, self.trace)
+        self.assertEqual(data['covered'], data['total'])
+        for trace in self.trace.glob('trace-*'):
+            trace.unlink()
+        control = self.scripts / 'control'
+        control.write_text('#!/bin/bash\nprintf control\n')
+        subprocess.run(bash_command(control), capture_output=True, timeout=10, env=env, check=True)
+        subprocess.run([str(self.source), 'literal $()'], capture_output=True, timeout=10, env=env)
+        files = {Path(file['path']).name: file for file in report.collect(self.root, self.trace)['files']}
+        self.assertEqual(files['upgrade']['covered'], 0)
+        self.assertFalse(report.passes(files['upgrade']['covered'], files['upgrade']['total']))
 
 
 if __name__ == '__main__':

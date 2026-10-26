@@ -91,8 +91,11 @@ sys.exit(int(os.environ.get('APDATIFIER_TEST_INSTALL_EXIT', '0')))
         path.write_text(text)
         path.chmod(0o700)
 
-    def write_archive(self, kind="tar", metadata=True, valid_json=True):
-        content = json.dumps({"KPackageStructure": "Plasma/Applet", "KPlugin": {"Id": "org.example.widget", "Version": "1"}}).encode()
+    def write_archive(self, kind="tar", metadata=True, valid_json=True, enabled=None):
+        values = {"KPackageStructure": "Plasma/Applet", "KPlugin": {"Id": "org.example.widget", "Version": "1"}}
+        if enabled is not None:
+            values['KPlugin']['EnabledByDefault'] = enabled
+        content = json.dumps(values).encode()
         if not valid_json:
             content = b"{invalid JSON"
         name = "widget/metadata.json" if metadata else "widget/README"
@@ -105,9 +108,10 @@ sys.exit(int(os.environ.get('APDATIFIER_TEST_INSTALL_EXIT', '0')))
                 item.size = len(content)
                 archive.addfile(item, io.BytesIO(content))
 
-    def run_widget(self, *args):
+    def run_widget(self, *args, input=None):
+        stream = {'stdin': subprocess.DEVNULL} if input is None else {'input': input}
         return subprocess.run(["bash", str(self.script), *args], env=self.env,
-                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15)
+                              **stream, capture_output=True, text=True, timeout=15)
 
     def assert_not_installed(self, result, expected):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
@@ -187,6 +191,96 @@ sys.exit(int(os.environ.get('APDATIFIER_TEST_INSTALL_EXIT', '0')))
         result = self.run_widget('upgradeAll')
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(len(self.log.read_text().splitlines()), 1)
+
+    def installed_widget(self, version='1', structure='Plasma/Applet'):
+        folder = Path(self.env['XDG_LOCAL_HOME']) / 'plasma/plasmoids/org.example.One'
+        folder.mkdir(parents=True, exist_ok=True)
+        folder.joinpath('metadata.json').write_text(json.dumps({'KPackageStructure': structure,
+            'KPlugin': {'Name':'Example One', 'Version':version, 'Description':'', 'Authors':[], 'Icon':''}}))
+        return folder
+
+    def test_discovery_and_installed_list_preserve_native_identity(self):
+        folder = self.installed_widget()
+        result = self.run_widget('check')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['nativeId'], folder.name)
+        self.assertEqual(data[0]['uid'], 'widgets:'+folder.name)
+        self.assertEqual(data[0]['VO'], '1')
+        self.assertEqual(data[0]['VN'], '2.13.0')
+        self.assertEqual(data[0]['AU'], '?')
+        result = self.run_widget('list')
+        data = json.loads('['+result.stdout.rstrip().rstrip(',')+']')
+        self.assertEqual(data[0]['nativeId'], folder.name)
+        self.assertEqual(data[0]['VO'], '1')
+
+    def test_empty_current_and_invalid_local_metadata_are_not_updates(self):
+        self.assertEqual(json.loads(self.run_widget('check').stdout), [])
+        folder = self.installed_widget('2.13.0')
+        self.assertEqual(json.loads(self.run_widget('check').stdout), [])
+        folder.joinpath('metadata.json').write_text('{broken')
+        self.assertEqual(json.loads(self.run_widget('check').stdout), [])
+
+    def test_api_pagination_and_package_types(self):
+        folder = self.installed_widget()
+        original = self.bin.joinpath('curl').read_text()
+        self.stub('curl', original.replace('<totalitems>2</totalitems>', '<totalitems>101</totalitems>'))
+        self.assertEqual(len(json.loads(self.run_widget('check').stdout)), 1)
+        for identifier, structure in [('715','Plasma/Wallpaper'),('719','KWin/Effect'),('720','KWin/Script')]:
+            with self.subTest(structure=structure):
+                self.stub('curl', original.replace('<typeid>705</typeid>',f'<typeid>{identifier}</typeid>'))
+                result = self.run_widget('check')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)[0]['TP'], structure)
+                self.assertEqual(json.loads(folder.joinpath('metadata.json').read_text())['KPackageStructure'], structure)
+
+    def test_api_failure_codes_never_become_an_empty_success(self):
+        self.installed_widget()
+        original = self.bin.joinpath('curl').read_text()
+        for code in ('200','403'):
+            with self.subTest(code=code):
+                self.stub('curl', original.replace('<statuscode>100</statuscode>',f'<statuscode>{code}</statuscode>'))
+                result = self.run_widget('check')
+                self.assertEqual(result.returncode, 1)
+                self.assertIn('Unable check widgets', result.stderr)
+        self.stub('curl', '#!/bin/sh\nexit 22\n')
+        result = self.run_widget('check')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Failed to retrieve data', result.stderr)
+
+    def test_later_api_page_failure_is_not_a_partial_success(self):
+        self.installed_widget()
+        original = self.bin.joinpath('curl').read_text().replace('<totalitems>2</totalitems>', '<totalitems>101</totalitems>')
+        for failure in ('http', 'status'):
+            with self.subTest(failure=failure):
+                handler = ("if '--parallel' in args:\n"
+                           + ("    sys.exit(22)\n" if failure == 'http' else
+                              "    pathlib.Path(args[args.index('-o')+1]).write_text('<ocs><meta><statuscode>403</statuscode></meta></ocs>')\n    sys.exit(0)\n"))
+                self.stub('curl', original.replace('args = sys.argv[1:]\n', 'args = sys.argv[1:]\n'+handler))
+                result = self.run_widget('check')
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, '')
+                self.assertFalse(self.log.exists())
+
+    def test_bulk_confirmation_can_cancel_then_install(self):
+        self.installed_widget()
+        with self.config.joinpath('config.conf').open('a') as stream:
+            stream.write('widgetConfirmation="true"\n')
+        result = self.run_widget('upgradeAll', input='n\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.log.exists())
+        result = self.run_widget('upgradeAll', input='invalid\ny\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.log.read_text().splitlines()), 1)
+
+    def test_apdatifier_archive_keeps_default_tray_visibility(self):
+        self.write_archive(enabled=False)
+        with self.config.joinpath('config.conf').open('a') as stream:
+            stream.write('trayEnabledByDefault="true"\n')
+        result = self.run_widget('upgrade','2196105','apdatifier')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(self.log.read_text())['metadata']['KPlugin']['EnabledByDefault'])
 
 
 if __name__ == '__main__':
