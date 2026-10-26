@@ -3,6 +3,7 @@
 
 import argparse
 import configparser
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,8 @@ import stat
 import sys
 import tempfile
 from urllib.parse import quote
+
+from bash_coverage import SCOPE, sources
 
 
 BLOCKS = ("coverage-badges", "coverage-summary")
@@ -66,9 +69,49 @@ def javascript_metrics(path):
             for hit, found in (("LH", "LF"), ("BRH", "BRF"), ("FNH", "FNF"))]
 
 
-def badge(label, value, passed):
+def bash_metrics(path):
+    data = json.loads(path.read_text(encoding="utf-8"))
+    root = path.parent.parent
+    if (not isinstance(data, dict) or type(data.get("schemaVersion")) is not int
+            or data.get("schemaVersion") != 1 or data.get("scope") != SCOPE):
+        raise ValueError("The Bash report has an unknown schema or scope.")
+    if not isinstance(data.get("files"), list):
+        raise ValueError("The Bash report has no source list.")
+    expected = {source.relative_to(root).as_posix(): source for source in sources(root)}
+    seen = set()
+    covered = total = 0
+    for record in data["files"]:
+        if not isinstance(record, dict):
+            raise ValueError("The Bash source record is invalid.")
+        source = record["path"]
+        if source in seen or source not in expected:
+            raise ValueError("The Bash report repeats a source or includes an unrelated file.")
+        seen.add(source)
+        contents = expected[source].read_bytes()
+        if record["sha256"] != hashlib.sha256(contents).hexdigest():
+            raise ValueError("The Bash report describes an earlier source version.")
+        counts = record["lines"]
+        if not isinstance(counts, dict):
+            raise ValueError("The Bash line counters are invalid.")
+        for line, count in counts.items():
+            if (not line.isdigit() or str(int(line)) != line or not 0 < int(line) <= len(contents.splitlines())
+                    or type(count) is not int or count < 0):
+                raise ValueError("The Bash line counters are invalid.")
+        hits = sum(count > 0 for count in counts.values())
+        if (type(record["covered"]) is not int or type(record["total"]) is not int
+                or record["covered"] != hits or record["total"] != len(counts)):
+            raise ValueError("The Bash file totals do not match their line counters.")
+        covered += hits
+        total += len(counts)
+    if (seen != set(expected) or type(data["covered"]) is not int or type(data["total"]) is not int
+            or data["covered"] != covered or data["total"] != total):
+        raise ValueError("The Bash report omits sources or has inconsistent totals.")
+    return [percentage(covered, total)]
+
+
+def badge(label, value, passed=None):
     message = "unavailable" if value is None else f"{value:.2f}%"
-    color = "lightgrey" if value is None else "brightgreen" if passed else "red"
+    color = "lightgrey" if value is None else "blue" if passed is None else "brightgreen" if passed else "red"
     url = f"https://img.shields.io/badge/{quote(label)}-{quote(message)}-{color}?style=flat"
     return f"[![{label}: {message}]({url})](#coverage)"
 
@@ -112,7 +155,8 @@ def atomic_write(path, text):
             temporary.unlink(missing_ok=True)
 
 
-def update(root, exit_code, phase, python_status, javascript_status, javascript_thresholds, interrupted=False):
+def update(root, exit_code, phase, python_status, javascript_status, javascript_thresholds, interrupted=False,
+           bash_status="not-run"):
     configuration = configparser.ConfigParser()
     with (root / ".coveragerc").open(encoding="utf-8") as stream:
         configuration.read_file(stream)
@@ -128,42 +172,48 @@ def update(root, exit_code, phase, python_status, javascript_status, javascript_
     for name, status, path, loader in (
         ("Python", python_status, root / "coverage/python.json", python_metrics),
         ("JavaScript", javascript_status, root / "coverage/javascript.lcov", javascript_metrics),
+        ("Bash", bash_status, root / "coverage/bash.json", bash_metrics),
     ):
+        width = 1 if name == "Bash" else 3
         if status == "not-run":
-            results.append([None] * 3)
+            results.append([None] * width)
             continue
         try:
             results.append(loader(path))
         except (OSError, ValueError, KeyError, TypeError):
-            results.append([None] * 3)
+            results.append([None] * width)
             diagnostics.append(f"{name} coverage report is missing or invalid.")
-    python, javascript = results
+    python, javascript, bash = results
     # Match coverage.py's configured precision and its exact 100% requirement.
     python_passed = python[0] is not None and (
         python[0] == 100 if python_threshold == 100 else round(python[0], precision) >= python_threshold)
     javascript_passed = [value is not None and value >= minimum
                          for value, minimum in zip(javascript, javascript_thresholds)]
-    complete = python_status != "not-run" and javascript_status != "not-run"
-    passed = (exit_code == 0 and complete and python_status == javascript_status == "passed"
+    complete = all(status != "not-run" for status in (python_status, javascript_status, bash_status))
+    passed = (exit_code == 0 and complete and python_status == javascript_status == bash_status == "passed"
               and python_passed and all(javascript_passed) and not diagnostics)
     status = "INTERRUPTED" if interrupted else "NOT RUN" if phase == "preparation" else "PASSED" if passed else "FAILED"
     badges = "\n".join((badge("Python coverage", python[0], python_passed),
-                        badge("JavaScript lines", javascript[0], javascript_passed[0])))
+                        badge("JavaScript lines", javascript[0], javascript_passed[0]),
+                        badge("Bash lines", bash[0])))
     lines = [f"Last coverage run: **{status}**.", "",
              f"Python checks: **{python_status.upper().replace('-', ' ')}**. "
-             f"JavaScript checks: **{javascript_status.upper().replace('-', ' ')}**.", "",
+             f"JavaScript checks: **{javascript_status.upper().replace('-', ' ')}**. "
+             f"Bash measurement: **{bash_status.upper().replace('-', ' ')}**.", "",
              "| Metric | Coverage | Minimum | Coverage gate |",
              "| --- | ---: | ---: | --- |"]
     metrics = list(zip(("Python: statements and branches", "Python: statements", "Python: branches"),
                        python, (python_threshold, None, None), (python_passed, None, None)))
     metrics += list(zip(("JavaScript: lines", "JavaScript: branches", "JavaScript: functions"),
                         javascript, javascript_thresholds, javascript_passed))
+    metrics += [("Bash: lines", bash[0], None, None)]
     for label, value, minimum, met in metrics:
         display = "Unavailable" if value is None else f"{value:.2f}%"
         threshold = "Not gated" if minimum is None else f"{minimum:g}%"
         gate = "Not gated" if minimum is None else "Unavailable" if value is None else "PASS" if met else "FAIL"
         lines.append(f"| {label} | {display} | {threshold} | {gate} |")
-    lines += ["", "Measured scope: `package/contents/tools/backends.py` and `package/contents/tools/tools.js`."]
+    lines += ["", "Measured scope: `package/contents/tools/backends.py`, `package/contents/tools/tools.js`, "
+              "and all Bash scripts in `package/contents/tools/sh` (except the `messages` data resource)."]
     if phase == "preparation":
         lines += ["", "Environment preparation did not complete; no current coverage results are available."]
     if diagnostics:
@@ -178,15 +228,16 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--exit-code", type=int, required=True)
-    parser.add_argument("--phase", choices=("preparation", "python", "javascript", "complete"), required=True)
+    parser.add_argument("--phase", choices=("preparation", "python", "bash", "javascript", "complete"), required=True)
     parser.add_argument("--python-status", choices=STATES, required=True)
     parser.add_argument("--javascript-status", choices=STATES, required=True)
+    parser.add_argument("--bash-status", choices=STATES, default="not-run")
     parser.add_argument("--javascript-thresholds", type=float, nargs=3, required=True)
     parser.add_argument("--interrupted", action="store_true")
     args = parser.parse_args(argv)
     try:
         return update(args.root, args.exit_code, args.phase, args.python_status,
-                      args.javascript_status, args.javascript_thresholds, args.interrupted)
+                      args.javascript_status, args.javascript_thresholds, args.interrupted, args.bash_status)
     except (OSError, ValueError, configparser.Error) as error:
         print(f"Cannot update README coverage status: {error}", file=sys.stderr)
         return 1

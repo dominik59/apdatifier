@@ -8,6 +8,7 @@ widgets, and firmware updates.
 <!-- coverage-badges:start -->
 [![Python coverage: 85.52%](https://img.shields.io/badge/Python%20coverage-85.52%25-brightgreen?style=flat)](#coverage)
 [![JavaScript lines: 95.33%](https://img.shields.io/badge/JavaScript%20lines-95.33%25-brightgreen?style=flat)](#coverage)
+[![Bash lines: 31.90%](https://img.shields.io/badge/Bash%20lines-31.90%25-blue?style=flat)](#coverage)
 <!-- coverage-badges:end -->
 
 [Install](#installation) · [Update](#updating) · [Uninstall](#uninstalling) · [Coverage](#coverage)
@@ -126,7 +127,7 @@ the cache. The commands above include the cache.
 <!-- coverage-summary:start -->
 Last coverage run: **PASSED**.
 
-Python checks: **PASSED**. JavaScript checks: **PASSED**.
+Python checks: **PASSED**. JavaScript checks: **PASSED**. Bash measurement: **PASSED**.
 
 | Metric | Coverage | Minimum | Coverage gate |
 | --- | ---: | ---: | --- |
@@ -136,12 +137,15 @@ Python checks: **PASSED**. JavaScript checks: **PASSED**.
 | JavaScript: lines | 95.33% | 80% | PASS |
 | JavaScript: branches | 76.00% | 70% | PASS |
 | JavaScript: functions | 91.88% | 70% | PASS |
+| Bash: lines | 31.90% | Not gated | Not gated |
 
-Measured scope: `package/contents/tools/backends.py` and `package/contents/tools/tools.js`.
+Measured scope: `package/contents/tools/backends.py`, `package/contents/tools/tools.js`, and all Bash scripts in `package/contents/tools/sh` (except the `messages` data resource).
 <!-- coverage-summary:end -->
 
 `./tests/run_coverage.sh` refreshes these local results after each run, including
 failures. Commit and push README to publish changed results on GitHub.
+Bash line coverage includes unexecuted application scripts and has no minimum gate.
+Open `coverage/bash/index.html` for source lines and hit counts.
 See [development checks](docs/DEVELOPMENT.md) for setup, reports, and limitations.
 
 ## Development

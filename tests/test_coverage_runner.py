@@ -20,6 +20,11 @@ class CoverageRunnerTests(unittest.TestCase):
         source = Path(__file__).resolve().parent / "run_coverage.sh"
         shutil.copy2(source, self.script)
         shutil.copy2(source.with_name("update_coverage_readme.py"), self.script.with_name("update_coverage_readme.py"))
+        for name in ('bash_coverage.py', 'bash_coverage.sh'):
+            shutil.copy2(source.with_name(name), self.script.with_name(name))
+        shell = self.root / 'package/contents/tools/sh/upgrade'
+        shell.parent.mkdir(parents=True)
+        shell.write_text('#!/bin/bash\nprintf fixture\n')
         shutil.copy2(source.parents[1] / ".coveragerc", self.root / ".coveragerc")
         self.readme = self.root / "README.md"
         self.readme.write_text('# Test project\n\n<!-- coverage-badges:start -->\n<!-- coverage-badges:end -->\n'
@@ -29,10 +34,12 @@ class CoverageRunnerTests(unittest.TestCase):
         self.log = self.root / "commands.jsonl"
         self.base = self.root / "base python"
         self.base.write_text(r'''#!/usr/bin/python3
-import json, os, pathlib, shutil, signal, sys
+import hashlib, json, os, pathlib, shutil, signal, sys
 args = sys.argv[1:]
 with open(os.environ['APDATIFIER_BOOTSTRAP_LOG'], 'a') as stream:
-    stream.write(json.dumps({'program': str(pathlib.Path(sys.argv[0]).resolve()), 'args': args}) + '\n')
+    stream.write(json.dumps({'program': str(pathlib.Path(sys.argv[0]).resolve()), 'args': args,
+                             'bash_env': os.environ.get('BASH_ENV'),
+                             'bash_trace': os.environ.get('APDATIFIER_BASH_COVERAGE_DIR')}) + '\n')
 if args[:2] == ['-m', 'venv']:
     if os.environ.get('APDATIFIER_BOOTSTRAP_CREATE_FAIL'):
         sys.exit(3)
@@ -59,6 +66,15 @@ elif args[:2] == ['-m', 'pip']:
     installed.write_text(requirements)
 elif args[:1] == ['tests/update_coverage_readme.py']:
     os.execv('/usr/bin/python3', ['/usr/bin/python3', *args])
+elif args[:1] == ['tests/bash_coverage.py']:
+    if os.environ.get('APDATIFIER_BOOTSTRAP_BASH_REPORT_FAIL'):
+        sys.exit(6)
+    if not os.environ.get('APDATIFIER_BOOTSTRAP_NO_REPORTS'):
+        source = pathlib.Path('package/contents/tools/sh/upgrade')
+        pathlib.Path('coverage/bash.json').write_text(json.dumps({
+            'schemaVersion': 1, 'scope': 'package/contents/tools/sh', 'covered': 1, 'total': 1,
+            'files': [{'path': source.as_posix(), 'sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+                       'lines': {'2': 1}, 'covered': 1, 'total': 1}]}))
 elif args[:3] == ['-m', 'coverage', 'json']:
     if os.environ.get('APDATIFIER_BOOTSTRAP_REPORT_FAIL'):
         sys.exit(6)
@@ -91,7 +107,8 @@ if sys.argv[1] == '--test':
                         APDATIFIER_BOOTSTRAP_LOG=str(self.log))
         for key in ("APDATIFIER_TEST_VENV", "APDATIFIER_BOOTSTRAP_CREATE_FAIL", "APDATIFIER_BOOTSTRAP_INSTALL_FAIL",
                     "APDATIFIER_BOOTSTRAP_OLD_NODE", "APDATIFIER_BOOTSTRAP_TEST_EXIT", "APDATIFIER_BOOTSTRAP_REPORT_FAIL",
-                    "APDATIFIER_BOOTSTRAP_NO_REPORTS", "APDATIFIER_BOOTSTRAP_NODE_TEST_EXIT", "APDATIFIER_BOOTSTRAP_INTERRUPT"):
+                    "APDATIFIER_BOOTSTRAP_NO_REPORTS", "APDATIFIER_BOOTSTRAP_NODE_TEST_EXIT", "APDATIFIER_BOOTSTRAP_INTERRUPT",
+                    "APDATIFIER_BOOTSTRAP_BASH_REPORT_FAIL"):
             self.env.pop(key, None)
 
     def invoke(self):
@@ -121,6 +138,10 @@ if sys.argv[1] == '--test':
         self.assertEqual(len(runs), 2)
         self.assertTrue(all(entry["program"] == str(self.root / ".venv/bin/python") for entry in runs + installs))
         self.assertEqual(len(self.commands(["--test"])), 2)
+        self.assertEqual(len(self.commands(['tests/bash_coverage.py'])), 2)
+        self.assertTrue(all(entry['bash_env'] == str(self.root / 'tests/bash_coverage.sh') for entry in runs))
+        self.assertTrue(all(entry['bash_trace'] == str(self.root / 'coverage/bash-traces') for entry in runs))
+        self.assertIn('| Bash: lines | 100.00% | Not gated | Not gated |', self.readme.read_text())
 
     def test_requirement_changes_install_the_new_pin_inside_the_existing_environment(self):
         self.assertEqual(self.invoke().returncode, 0)
@@ -199,6 +220,7 @@ if sys.argv[1] == '--test':
         self.assertNotIn('90.00%', text)
         self.assertIn('| JavaScript: lines | Unavailable', text)
         self.assertIn('| Python: statements and branches | Unavailable', text)
+        self.assertIn('| Bash: lines | Unavailable', text)
 
     def test_report_failure_still_runs_javascript_and_updates_the_readme(self):
         self.env["APDATIFIER_BOOTSTRAP_REPORT_FAIL"] = "true"
@@ -222,6 +244,16 @@ if sys.argv[1] == '--test':
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.readme.read_text(), 'Keep this README.\n')
         self.assertIn('README needs one matching', result.stderr)
+
+    def test_bash_report_failure_does_not_skip_javascript_or_reuse_previous_results(self):
+        self.assertEqual(self.invoke().returncode, 0)
+        self.env['APDATIFIER_BOOTSTRAP_BASH_REPORT_FAIL'] = 'true'
+        result = self.invoke()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(self.commands(['--test'])), 2)
+        self.assertIn('Bash coverage report is missing or invalid.', self.readme.read_text())
+        self.assertIn('| Bash: lines | Unavailable', self.readme.read_text())
+        self.assertIn('| JavaScript: lines | 90.00%', self.readme.read_text())
 
 
 if __name__ == "__main__":

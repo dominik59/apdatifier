@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socketserver
 import subprocess
@@ -781,6 +782,167 @@ class NativeAptTests(TemporaryCase):
 
 
 class ShellLifecycleTests(TemporaryCase):
+    def native_terminal(self, operation, values=(), *, settings=None, codes=None,
+                        translated=False, python_available=True, no_updates=False):
+        """Exercise the real shell, replacing only native operations and tools."""
+        case = Path(tempfile.mkdtemp(prefix="terminal fixture ", dir=self.root))
+        tools = case / "contents/tools"
+        scripts = tools / "sh"
+        scripts.mkdir(parents=True)
+        original = Path(b.__file__).parent / "sh"
+        for name in ("upgrade", "utils", "vars", "arguments", "messages"):
+            shutil.copyfile(original / name, scripts / name)
+        if not python_available:
+            script = scripts / "upgrade"
+            detection = "[[ -x /usr/bin/python3 ]] && hasPython=true"
+            self.assertEqual(script.read_text().count(detection), 1)
+            script.write_text(script.read_text().replace(detection, "hasPython=false"))
+        helper = tools / "backends.py"
+        helper.write_text('''import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["APDATIFIER_TEST_EVENTS"], "a") as stream:
+    stream.write(json.dumps(args) + "\\n")
+if args[0] == "lifecycle":
+    if args[1] == "start":
+        print("FIXTURE lifecycle start", file=sys.stderr, flush=True)
+    os.execv("/usr/bin/python3", ["/usr/bin/python3", "-I", "-B",
+             os.environ["APDATIFIER_TEST_REAL_HELPER"], *args])
+assert args[0] == "foreground", args
+print("FIXTURE foreground " + args[1], flush=True)
+print("FIXTURE administrator prompt", flush=True)
+if os.environ["APDATIFIER_TEST_EMPTY"] == "true":
+    print("There are no selected Snap updates.", flush=True)
+code = json.loads(os.environ["APDATIFIER_TEST_CODES"]).get(args[1], 0)
+if code:
+    print("FIXTURE operation failed", file=sys.stderr, flush=True)
+raise SystemExit(code)
+''')
+        flatpak = scripts / "flatpak"
+        flatpak.write_text("#!/bin/sh\nprintf '%s\\n' 'FIXTURE flatpak'\n")
+        flatpak.chmod(0o700)
+        if translated:
+            gettext = scripts / "gettext"
+            gettext.write_text('''#!/bin/sh
+case "$1" in
+    'APT Upgrade') printf '%s\\n' 'Translated APT' ;;
+    'Snap Upgrade') printf '%s\\n' 'Translated Snap' ;;
+    'Upgrade') printf '%s\\n' 'Translated Upgrade' ;;
+    *) printf '%s\\n' "$1" ;;
+esac
+''')
+            gettext.chmod(0o700)
+        paths = b.Paths(case / "config", case / "cache")
+        paths.config.mkdir()
+        config = dict.fromkeys(("arch", "aur", "apt", "snap", "flatpak", "widgets", "fwupd", "termFont"), "false")
+        config.update(settings or {})
+        paths.config.joinpath("config.conf").write_text("".join(
+            key + "=" + b.shlex.quote(value) + "\n" for key, value in config.items()))
+        events = case / "events.jsonl"
+        result = subprocess.run(
+            ["bash", str(scripts / "upgrade"), operation, "--transaction", "header-test", *values],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, timeout=15, env=dict(
+                os.environ, APDATIFIER_CONFIG_DIR=str(paths.config), APDATIFIER_CACHE_DIR=str(paths.cache),
+                TERM="dumb", LC_ALL="C", LANGUAGE="C", PATH=str(scripts) + os.pathsep + os.environ["PATH"],
+                APDATIFIER_TEST_REAL_HELPER=str(Path(b.__file__).resolve()), APDATIFIER_TEST_EVENTS=str(events),
+                APDATIFIER_TEST_CODES=json.dumps(codes or {}), APDATIFIER_TEST_EMPTY=str(no_updates).lower(),
+            ),
+        )
+        result.stdout = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", result.stdout)
+        calls = [json.loads(line) for line in events.read_text().splitlines()] if events.exists() else []
+        return result, calls, b.read_json(paths.cache / "upgrade-state.json", {})
+
+    def test_native_source_and_package_headers_precede_foreground_output(self):
+        cases = [
+            ("apt", [], "apt", "upgrade", "APT Upgrade"),
+            ("snap", [], "snap", "refresh", "Snap Upgrade"),
+            ("apt-pkg", ["example:i386"], "apt", "upgrade-package", "Upgrade: example:i386 (APT)"),
+            ("snap-pkg", ["example_test"], "snap", "refresh", "Upgrade: example_test (Snap)"),
+        ]
+        for operation, values, source, action, title in cases:
+            with self.subTest(operation=operation):
+                result, calls, state = self.native_terminal(operation, values)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(result.stdout.count(title), 1, result.stdout)
+                self.assertIn(":" * 48, result.stdout)
+                self.assertLess(result.stdout.index("FIXTURE lifecycle start"), result.stdout.index(title))
+                self.assertLess(result.stdout.index(title), result.stdout.index("FIXTURE foreground"))
+                self.assertLess(result.stdout.index(title), result.stdout.index("FIXTURE administrator prompt"))
+                self.assertEqual([call for call in calls if call[0] == "foreground"], [
+                    ["foreground", source, action, *values, "--transaction", "header-test"]])
+                self.assertEqual(state["status"], "ok")
+                self.assertIn(source + " Exit code: 0", result.stdout)
+                self.assertIn("Total execution time:", result.stdout)
+
+    def test_full_native_headers_keep_stage_order_and_the_flatpak_header(self):
+        result, calls, state = self.native_terminal("full", settings=dict(apt="true", snap="true", flatpak="true"))
+        self.assertEqual(result.returncode, 0, result.stdout)
+        previous = -1
+        for text in ("FIXTURE lifecycle start", "APT Upgrade", "FIXTURE foreground apt",
+                     "Snap Upgrade", "FIXTURE foreground snap", "Flatpak Upgrade", "FIXTURE flatpak"):
+            self.assertEqual(result.stdout.count(text), 1, result.stdout)
+            position = result.stdout.index(text)
+            self.assertGreater(position, previous)
+            previous = position
+        self.assertEqual([call[1] for call in calls if call[0] == "foreground"], ["apt", "snap"])
+        self.assertEqual([stage["backend"] for stage in state["stages"]], ["apt", "snap", "flatpak"])
+
+    def test_native_headers_remain_after_failure_cancellation_or_no_updates(self):
+        for source, code, empty, expected in (("apt", 100, False, "error"), ("snap", 1, False, "error"),
+                                              ("snap", 130, False, "canceled"), ("snap", 0, True, "ok")):
+            with self.subTest(source=source, code=code, empty=empty):
+                result, _, state = self.native_terminal(source, codes={source: code}, no_updates=empty)
+                self.assertEqual(result.returncode, 130 if code == 130 else 1 if code else 0, result.stdout)
+                title = "APT Upgrade" if source == "apt" else "Snap Upgrade"
+                self.assertEqual(result.stdout.count(title), 1, result.stdout)
+                self.assertLess(result.stdout.index(title), result.stdout.index("FIXTURE foreground"))
+                self.assertEqual(state["status"], expected)
+                self.assertEqual(state["stages"][0]["code"], code)
+                if empty:
+                    self.assertIn("There are no selected Snap updates.", result.stdout)
+
+    def test_native_failure_continues_but_cancellation_skips_later_headers(self):
+        for code in (100, 130):
+            with self.subTest(code=code):
+                result, calls, state = self.native_terminal(
+                    "full", settings=dict(apt="true", snap="true", flatpak="true"), codes={"apt": code})
+                self.assertEqual(result.returncode, 130 if code == 130 else 1, result.stdout)
+                self.assertEqual(result.stdout.count("APT Upgrade"), 1)
+                if code == 130:
+                    self.assertNotIn("Snap Upgrade", result.stdout)
+                    self.assertNotIn("Flatpak Upgrade", result.stdout)
+                    self.assertEqual([call[1] for call in calls if call[0] == "foreground"], ["apt"])
+                    self.assertEqual(state["status"], "canceled")
+                else:
+                    self.assertEqual(result.stdout.count("Snap Upgrade"), 1)
+                    self.assertEqual(result.stdout.count("Flatpak Upgrade"), 1)
+                    self.assertEqual(state["status"], "partial")
+
+    def test_native_header_translations_keep_package_arguments_as_data(self):
+        sentinel = self.root / "must-not-exist"
+        name = f"example_$(touch {sentinel})'literal"
+        cases = [("apt", [], "Translated APT"), ("snap", [], "Translated Snap"),
+                 ("apt-pkg", ["example:i386"], "Translated Upgrade: example:i386 (APT)"),
+                 ("snap-pkg", [name], "Translated Upgrade: " + name + " (Snap)")]
+        for operation, values, title in cases:
+            with self.subTest(operation=operation):
+                result, calls, _ = self.native_terminal(operation, values, translated=True)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(result.stdout.count(title), 1, result.stdout)
+                foreground = next(call for call in calls if call[0] == "foreground")
+                self.assertEqual(foreground[3:-2], values)
+                self.assertFalse(sentinel.exists())
+
+    def test_native_header_precedes_the_missing_python_error(self):
+        for source, title in (("apt", "APT Upgrade"), ("snap", "Snap Upgrade")):
+            with self.subTest(source=source):
+                result, calls, _ = self.native_terminal(source, python_available=False)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertEqual(result.stdout.count(title), 1, result.stdout)
+                self.assertLess(result.stdout.index(title), result.stdout.index("System Python 3 is unavailable"))
+                self.assertIn(source + " Exit code: 127", result.stdout)
+                self.assertEqual(calls, [])
+
     def test_argument_quotes_escapes_empty_values_and_literal_metacharacters(self):
         script = Path(__file__).resolve().parents[1] / "package/contents/tools/sh/arguments"
         examples = [
@@ -879,6 +1041,7 @@ class ShellLifecycleTests(TemporaryCase):
                                          APDATIFIER_TEST_ARGUMENTS=str(marker)))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(marker.read_text().splitlines(), ["update", "--user", reference])
+        self.assertIn("Upgrade: Example", re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", result.stdout))
 
     def test_apt_only_sequence_runs_user_hooks_once_without_native_changes(self):
         marker = self.root / "hooks"

@@ -11,6 +11,7 @@ test_report_python="$test_base_python"
 test_phase=preparation
 test_python_status=not-run
 test_javascript_status=not-run
+test_bash_status=not-run
 test_interrupted=false
 test_javascript_lines=80
 test_javascript_branches=70
@@ -25,6 +26,7 @@ update_readme() {
     "$test_report_python" tests/update_coverage_readme.py \
         --exit-code "$test_exit_status" --phase "$test_phase" \
         --python-status "$test_python_status" --javascript-status "$test_javascript_status" \
+        --bash-status "$test_bash_status" \
         --javascript-thresholds "$test_javascript_lines" "$test_javascript_branches" "$test_javascript_functions" \
         "${test_report_flags[@]}"
     local test_report_status=$?
@@ -40,7 +42,10 @@ trap 'test_interrupted=true; exit 143' TERM
 
 # Only reports produced by this invocation may be published in the README.
 mkdir -p coverage
-rm -f -- coverage/python.json coverage/javascript.lcov
+rm -f -- coverage/python.json coverage/javascript.lcov coverage/bash.json coverage/bash.lcov
+test_bash_trace="$PWD/coverage/bash-traces"
+rm -rf -- "$test_bash_trace"
+mkdir -p -- "$test_bash_trace"
 
 "$test_node" -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && minor < 8)) { console.error("Coverage needs Node.js 22.8 or later."); process.exit(2); }'
 
@@ -71,7 +76,8 @@ fi
 test_status=0
 test_phase=python
 test_python_status=failed
-if "$test_python" -m coverage run -m unittest discover -s tests -v; then
+if APDATIFIER_BASH_COVERAGE_DIR="$test_bash_trace" BASH_ENV="$PWD/tests/bash_coverage.sh" \
+        "$test_python" -m coverage run -m unittest discover -s tests -v; then
     test_python_status=passed
 else
     test_status=1
@@ -82,6 +88,14 @@ for report in html xml json report; do
         test_status=1
     fi
 done
+
+test_phase=bash
+test_bash_status=failed
+if "$test_python" tests/bash_coverage.py --trace-dir "$test_bash_trace"; then
+    test_bash_status=passed
+else
+    test_status=1
+fi
 
 test_phase=javascript
 test_javascript_status=failed

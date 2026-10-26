@@ -2,8 +2,8 @@
 
 [Back to README](../README.md)
 
-Run commands from the repository root. Node.js and coverage.py are development
-tools; the installed application's APT and Snap helpers use only the Python
+Run commands from the repository root. Node.js, coverage.py, and the Tree-sitter
+parsers are development tools; the installed application's APT and Snap helpers use only the Python
 standard library.
 
 ## Coverage
@@ -31,12 +31,14 @@ No manual activation or global pip installation is needed.
 | `APDATIFIER_TEST_NODE` | Node.js executable for the test runner |
 
 Python coverage uses coverage.py. JavaScript coverage uses the built-in Node.js
-test runner and V8; no npm package is required.
+test runner and V8; no npm package is required. Bash coverage uses Bash's DEBUG
+trace and the pinned Tree-sitter Python packages installed in the same `.venv`.
+It does not require Ruby, kcov, or a change to installed application dependencies.
 
 ## README status
 
 Each invocation updates the [README badges and table](../README.md#coverage)
-from that run's Python JSON and JavaScript LCOV reports. Failed checks retain a
+from that run's Python JSON, JavaScript LCOV, and Bash JSON reports. Failed checks retain a
 failed run status even when measured coverage is high. Missing or invalid
 reports show unavailable results, rather than earlier percentages.
 
@@ -77,6 +79,9 @@ The script writes these ignored reports, with paths relative to the repository r
 | Python XML | `coverage/python.xml` |
 | Python JSON | `coverage/python.json` |
 | JavaScript LCOV | `coverage/javascript.lcov` |
+| Bash HTML with source lines and hit counts | `coverage/bash/index.html` |
+| Bash JSON | `coverage/bash.json` |
+| Bash LCOV | `coverage/bash.lcov` |
 | Test results and coverage summaries | Terminal output |
 
 [.coveragerc](../.coveragerc) enforces 80% combined statement and branch coverage
@@ -84,13 +89,43 @@ for `package/contents/tools/backends.py`. JavaScript requires 80% lines, 70%
 branches, and 70% functions for the complete `package/contents/tools/tools.js`.
 Either gate can fail the command. Menu and CLI code are included in the measurement.
 
-The percentages cover the Python helper and JavaScript application logic.
-Bash line coverage and QML execution coverage are not measured. The Python suite
-does test Bash operations through substitute commands and local archives.
+The percentages cover the Python helper, JavaScript application logic, and every
+Bash script in `package/contents/tools/sh`. The `messages` translation resource
+and `widgets-id` identifier list are data and are excluded from Bash coverage. Unexecuted
+scripts remain in the Bash denominator. Bash coverage is informational, with no
+minimum threshold; a missing or invalid measurement still fails the command.
+Its badge is blue to distinguish it from the Python and JavaScript coverage gates.
+
+QML execution coverage is not measured. The Python suite tests Bash operations
+through substitute commands and local archives.
+
+## Bash measurement
+
+The runner enables a test-only `BASH_ENV` hook for the Python suite. Bash's
+DEBUG trap records source locations, including sourced files, functions, and
+subshells. Tree-sitter identifies command lines without counting comments,
+function declarations, continuation-only lines, or heredoc text as commands.
+This is line coverage, not branch coverage: two commands on one line do not
+provide separate branch results.
+
+The hook writes locations and source snapshots to `coverage/bash-traces`.
+It does not record expanded commands or arguments. Temporary fixture copies
+contribute hits only when their names and source bytes match current application
+scripts. Modified copies are excluded. The README updater checks source hashes,
+file completeness, and counters before publishing the result.
+
+Every invocation clears earlier Bash reports and traces. Reporting still runs
+when tests fail, and independent JavaScript checks continue if Bash reporting
+fails. Reports stay local; no upload is required.
+
+References: [Bash startup files](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html),
+[Bash trap builtin](https://www.gnu.org/software/bash/manual/html_node/Bourne-Shell-Builtins.html),
+and [Tree-sitter Python bindings](https://tree-sitter.github.io/py-tree-sitter/).
 
 ## Individual checks
 
-No additional Python modules are needed for the unit tests:
+The standard helper tests need no additional Python modules. Bash collector tests
+use the pinned development parsers and skip when those parsers are absent:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v

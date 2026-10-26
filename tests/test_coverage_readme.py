@@ -1,6 +1,7 @@
 """Check report publication, failure states, and preservation of README content."""
 
 import contextlib
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -18,6 +19,9 @@ class CoverageReadmeTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.coverage = self.root / "coverage"
         self.coverage.mkdir()
+        self.shell = self.root / 'package/contents/tools/sh/upgrade'
+        self.shell.parent.mkdir(parents=True)
+        self.shell.write_text('#!/bin/bash\nprintf covered\nprintf missed\n')
         self.configuration = self.root / ".coveragerc"
         self.configuration.write_text('[report]\nfail_under = 80\nprecision = 2\n')
         self.readme = self.root / "README.md"
@@ -37,10 +41,15 @@ class CoverageReadmeTests(unittest.TestCase):
         (self.coverage / "javascript.lcov").write_text(
             'SF:package/contents/tools/tools.js\nLF:100\nLH:94\nBRF:100\nBRH:75\n'
             'FNF:100\nFNH:91\nend_of_record\n')
+        (self.coverage / 'bash.json').write_text(json.dumps({
+            'schemaVersion': 1, 'scope': 'package/contents/tools/sh', 'covered': 1, 'total': 2,
+            'files': [{'path': 'package/contents/tools/sh/upgrade',
+                       'sha256': hashlib.sha256(self.shell.read_bytes()).hexdigest(),
+                       'lines': {'2': 1, '3': 0}, 'covered': 1, 'total': 2}]}))
 
     def update(self, **overrides):
         arguments = dict(root=self.root, exit_code=0, phase="complete", python_status="passed",
-                         javascript_status="passed", javascript_thresholds=[80, 70, 70])
+                         javascript_status="passed", javascript_thresholds=[80, 70, 70], bash_status="passed")
         arguments.update(overrides)
         return report.update(**arguments)
 
@@ -55,6 +64,8 @@ class CoverageReadmeTests(unittest.TestCase):
         self.assertIn('| JavaScript: functions | 91.00% | 70% | PASS |', text)
         self.assertIn('Python%20coverage-90.00%25-brightgreen?style=flat', text)
         self.assertIn('JavaScript%20lines-94.00%25-brightgreen?style=flat', text)
+        self.assertIn('| Bash: lines | 50.00% | Not gated | Not gated |', text)
+        self.assertIn('Bash%20lines-50.00%25-blue?style=flat', text)
         self.configuration.write_text('[report]\nfail_under = 95\nprecision = 2\n')
         self.assertEqual(self.update(javascript_thresholds=[95, 80, 95]), 1)
         text = self.readme.read_text()
@@ -94,7 +105,7 @@ class CoverageReadmeTests(unittest.TestCase):
 
     def test_setup_failure_and_interruption_do_not_reuse_old_reports(self):
         self.assertEqual(self.update(exit_code=2, phase="preparation", python_status="not-run",
-                                     javascript_status="not-run"), 0)
+                                     javascript_status="not-run", bash_status="not-run"), 0)
         text = self.readme.read_text()
         self.assertIn('Last coverage run: **NOT RUN**', text)
         self.assertNotIn('90.00%', text)
@@ -204,6 +215,53 @@ class CoverageReadmeTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn('Cannot update README coverage status', error.getvalue())
         self.assertNotIn('Traceback', error.getvalue())
+
+    def test_bash_coverage_is_informational_and_cannot_hide_a_measurement_failure(self):
+        path = self.coverage / 'bash.json'
+        data = json.loads(path.read_text())
+        data['covered'] = data['files'][0]['covered'] = 0
+        data['files'][0]['lines']['2'] = 0
+        path.write_text(json.dumps(data))
+        self.assertEqual(self.update(), 0)
+        self.assertIn('| Bash: lines | 0.00% | Not gated | Not gated |', self.readme.read_text())
+        self.assertEqual(self.update(bash_status='failed'), 1)
+        self.assertIn('Last coverage run: **FAILED**', self.readme.read_text())
+
+    def test_invalid_bash_reports_preserve_independent_python_and_javascript_metrics(self):
+        path = self.coverage / 'bash.json'
+        original = json.loads(path.read_text())
+        invalid = []
+        for key, value in (('scope', '/another/project'), ('total', 99), ('schemaVersion', 9)):
+            data = json.loads(json.dumps(original))
+            data[key] = value
+            invalid.append(json.dumps(data))
+        data = json.loads(json.dumps(original))
+        data['files'].append(data['files'][0])
+        invalid.append(json.dumps(data))
+        data = json.loads(json.dumps(original))
+        data['files'][0]['lines']['2'] = -1
+        invalid.append(json.dumps(data))
+        invalid += [None, '{invalid', '[]']
+        for content in invalid:
+            with self.subTest(content=content):
+                if content is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_text(content)
+                self.assertEqual(self.update(), 1)
+                text = self.readme.read_text()
+                self.assertIn('| Bash: lines | Unavailable', text)
+                self.assertIn('| Python: statements and branches | 90.00%', text)
+                self.assertIn('| JavaScript: lines | 94.00%', text)
+
+    def test_bash_report_cannot_omit_unexecuted_files_or_reuse_earlier_source_hashes(self):
+        self.shell.with_name('unused').write_text('#!/bin/bash\nprintf never\n')
+        self.assertEqual(self.update(), 1)
+        self.assertIn('| Bash: lines | Unavailable', self.readme.read_text())
+        self.shell.with_name('unused').unlink()
+        self.shell.write_text(self.shell.read_text() + 'printf new\n')
+        self.assertEqual(self.update(), 1)
+        self.assertIn('| Bash: lines | Unavailable', self.readme.read_text())
 
 
 if __name__ == '__main__':

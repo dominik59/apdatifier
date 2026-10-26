@@ -47,6 +47,14 @@ msgid "Full system upgrade"
 msgstr ""
 
 #: ../contents/tools/sh/messages
+msgid "APT Upgrade"
+msgstr ""
+
+#: ../contents/tools/sh/messages
+msgid "Snap Upgrade"
+msgstr ""
+
+#: ../contents/tools/sh/messages
 msgid "Flatpak Upgrade"
 msgstr ""
 

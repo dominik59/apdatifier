@@ -185,6 +185,22 @@ finish() {
 
 native_upgrade() {
     local source="$1"; shift
+    local title=""
+    case "$source:$1" in
+        apt:upgrade) title="$UPGRADE_FULL_APT" ;;
+        apt:upgrade-package) title="$UPGRADE_PACKAGE: $2 (APT)" ;;
+        snap:refresh)
+            if (( $# > 1 )); then
+                title="$UPGRADE_PACKAGE: $2 (Snap)"
+            else
+                title="$UPGRADE_FULL_SNAP"
+            fi
+            ;;
+    esac
+    if [[ -n "$title" ]]; then
+        printMsg "$title"
+        echo
+    fi
     [[ "$hasPython" == true ]] || { printError "System Python 3 is unavailable"; return 127; }
     /usr/bin/python3 -I -B "$scriptDir/../backends.py" foreground "$source" "$@" --transaction "$transaction"
 }
