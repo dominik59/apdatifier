@@ -67,11 +67,11 @@ const runInTerminal = (script, ...args) => {
 }
 
 function runLater(ms, fn) {
-    const timer = Qt.createQmlObject('import QtQuick 2.0; Timer { repeat: false }', parent)
+    // The applet survives startup reparenting; its visual parent may not.
+    const timer = Qt.createQmlObject('import QtQuick 2.0; Timer { repeat: false }', root)
     timer.interval = ms
     timer.triggered.connect(() => {
-         fn()
-         timer.destroy()
+        try { fn() } finally { timer.destroy() }
     })
     timer.start()
 }

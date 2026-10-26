@@ -102,6 +102,11 @@ The optional QML check uses an existing PyQt6 installation and skips when the
 development binding is absent. It compiles components without creating a live
 applet. Compilation does not verify interactive desktop behavior.
 
+The Python suite also checks delayed callbacks with the system Python's existing
+PyQt6 binding. These two tests skip if that binding is absent. They create a small,
+isolated QML object and verify completion without a visual parent and after
+reparenting. They do not create a live applet or execute package commands.
+
 Native APT regression fixtures use temporary local repositories and simulation.
 They do not install or remove host packages. Snap API tests use a temporary Unix
 socket. Some restricted environments need permission for local sockets, HTTP

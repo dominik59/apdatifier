@@ -3,8 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Request ID | CR-APT-SNAP-001 |
-| Revision | 2.1 |
+| Revision | 2.2 |
 | Date | 2026-10-25 |
+| Last update | 2026-10-26 |
 | Product | Apdatifier |
 | Source version | 2.10.0 |
 | Source commit | e971e7c3ff568e061b5ff8d066411135dc4c7219 |
@@ -736,6 +737,10 @@ DATA-24. Do not accept malformed JSON or unknown schema versions.
 
 DATA-25. Do not describe unknown installation reasons as explicit installations.
 
+DATA-26. Keep delayed check completion active when the applet has no visual parent or changes that parent.
+
+DATA-27. Ignore delayed completion from a canceled or replaced check.
+
 RULE-01. Add an optional backend scope to package rules.
 
 RULE-02. Keep existing visual rules applicable through their current name and regular-expression behavior.
@@ -984,6 +989,7 @@ Each test must state the tested versions and the observed result.
 | AT-45 | Shell tests complete without terminal input when the developer starts the suite from an interactive terminal | TEST, STEP |
 | AT-46 | Each coverage invocation updates marked README results; failed checks, unavailable reports, unchanged results, and user content retain correct states | TEST, STEP |
 | AT-47 | Multiarch simulation records accept repeated dependency annotations; removal guards, operation exclusions, and malformed-record diagnostics remain effective | APT, EXEC, SAFE |
+| AT-48 | After an earlier source failure, a completed Snap check clears busy state and resumes the schedule; absent or replaced visual parents cannot cancel completion | DATA, NET |
 
 TEST-01. Use Python unittest for new automated helper tests.
 
@@ -1117,7 +1123,7 @@ An installed Plasma package version does not prove an interactive desktop test.
 | Development QML compiler | Qt 6.10.2 through existing PyQt6 |
 | Development coverage.py | 7.17.0 |
 
-The verification run on 2026-10-25 passed 152 Python tests and 63 JavaScript tests.
+The verification run on 2026-10-26 passed 154 Python tests and 66 JavaScript tests.
 The optional QML check compiled 18 files without errors.
 Python 3.10 syntax checks, shell syntax checks, JSON checks, XML checks, and whitespace checks passed.
 The messages file contains translation data and is excluded from shell syntax checks.
@@ -1501,6 +1507,35 @@ The command refreshed README coverage results automatically.
 No system packages were installed or removed during verification.
 The installed applet still needs the corrected helper through the normal package update.
 
+### 17.13 Delayed check completion correction on 2026-10-26
+
+The owner reported a check that stayed on the Snap status after computer startup.
+The Snap helper had written a complete result at 15:36.
+No check process remained active during inspection.
+The shared last-check timestamp still contained the previous day's value.
+
+An isolated Qt 6.10.2 test reproduced this visible state.
+Earlier source failures selected the three-second delay before completion.
+The delay timer used the applet's visual parent as its owner.
+Without that parent, Qt could not create the timer.
+Deletion of that parent also canceled a pending callback.
+Qt requires a valid parent and a sufficient creation-context lifetime. [S32]
+The live applet's parent at the time of the failure was not recorded.
+
+The timer now belongs to the applet root.
+It remains active when the visual parent changes.
+A callback failure still releases the timer.
+Existing request identifiers reject completion from canceled or replaced checks.
+
+Two real-engine QML regression tests failed before the correction and passed after it.
+They use the existing system PyQt6 binding and skip if it is absent.
+Three additional JavaScript tests cover delayed completion, cancellation, and timer release.
+The isolated source-check reproduction then completed and cleared its busy state.
+The complete coverage command passed 154 Python tests and 66 JavaScript tests.
+README coverage results were refreshed by that command.
+No host packages, installed applet files, or running desktop settings were changed.
+Update the installed applet and reload Plasma to load the corrected JavaScript.
+
 ## 18. Sources
 
 The source review date is 2026-10-24.
@@ -1540,3 +1575,4 @@ The requirements above define the selected product design.
 | S29 | [Ubuntu apt-secure(8)](https://manpages.ubuntu.com/manpages/resolute/man8/apt-secure.8.html) | Release metadata authentication and native error handling; checked on 2026-10-25 |
 | S30 | [Shields static badges](https://shields.io/badges/static-badge) | Labels, messages, percentage encoding, colors, and flat badge style; checked on 2026-10-25 |
 | S31 | [APT simulation implementation](https://github.com/Debian/apt/blob/main/apt-pkg/algorithms.cc) | Repeated dependency annotations from pkgSimulate::RealInstall and ShortBreaks; checked on 2026-10-25 |
+| S32 | [Qt dynamic QML object creation](https://doc.qt.io/qt-6/qtqml-javascript-dynamicobjectcreation.html) | Object parents, creation contexts, and deletion; checked on 2026-10-26 |

@@ -87,6 +87,84 @@ test("canceling a native request rejects its late successful callback", async ()
     assert.ok(commands.some(command => command.includes("'cancel'")));
 });
 
+test("a failed source completes after the Snap result and resumes automatic checks", async () => {
+    const c = nativeContext();
+    c.cfg.flatpak = true;
+    c.cfg.checkMode = "interval";
+    c.cfg.intervalMinutes = 120;
+    c.cache = c.keys([{ backend: "flatpak", NM: "old-flatpak", ID: "org.example.Old", VO: "1", VN: "2" }]);
+    const delayed = [];
+    c.runLater = (ms, callback) => delayed.push({ ms, callback });
+    c.execute = (command, callback) => {
+        if (command.startsWith("flatpak update")) callback(command, "", "network is unreachable", 1);
+        else if (command.includes("'check'")) {
+            const source = command.includes("'apt'") ? "apt" : "snap";
+            callback(command, JSON.stringify(result(source, "example")), "", 0);
+        }
+    };
+    c.checkUpdates();
+    await settle();
+    assert.equal(c.sts.busy, true);
+    assert.equal(c.sts.statusMsg, "Checking Snap updates...");
+    assert.equal(delayed.length, 1);
+    assert.equal(delayed[0].ms, 3000);
+    delayed[0].callback();
+    assert.equal(c.sts.busy, false);
+    assert.equal(c.scheduler.running, true);
+    assert.ok(c.sts.lastCheck > 0);
+    assert.equal(c.sts.retryAttempts, 1);
+    assert.ok(c.sts.retryAt > c.sts.lastCheck);
+    assert.equal(c.cache.length, 3);
+    assert.equal(c.cache.find(item => item.backend === "flatpak").stale, true);
+    assert.equal(c.cache.find(item => item.backend === "snap").stale, false);
+});
+
+test("a canceled delayed completion cannot finish a newer check", async () => {
+    const c = nativeContext();
+    const delayed = [];
+    c.runLater = (ms, callback) => delayed.push(callback);
+    c.execute = (command, callback) => {
+        if (!command.includes("'check'")) return;
+        const source = command.includes("'apt'") ? "apt" : "snap";
+        callback(command, JSON.stringify(result(source, "example")), "native failure", source === "apt" ? 1 : 0);
+    };
+    c.checkUpdates();
+    await settle();
+    assert.equal(delayed.length, 1);
+    c.stopCheck();
+    c.execute = () => {};
+    c.checkUpdates();
+    const token = c.sts.checkId;
+    const lastCheck = c.sts.lastCheck;
+    delayed[0]();
+    assert.equal(c.sts.busy, true);
+    assert.equal(c.sts.checkId, token);
+    assert.equal(c.sts.lastCheck, lastCheck);
+    assert.equal(c.cache.length, 0);
+});
+
+test("delayed callbacks belong to the applet and release their timer even on failure", () => {
+    for (const throws of [false, true]) {
+        const c = context();
+        let fire, destroyed = 0, calls = 0;
+        const timer = { triggered: { connect(callback) { fire = callback; } },
+                        start() {}, destroy() { destroyed++; } };
+        c.Qt.createQmlObject = (source, owner) => {
+            assert.equal(owner, c.root);
+            return timer;
+        };
+        c.runLater(3000, () => {
+            calls++;
+            if (throws) throw new Error("callback failure");
+        });
+        assert.equal(timer.interval, 3000);
+        if (throws) assert.throws(fire, /callback failure/);
+        else fire();
+        assert.equal(calls, 1);
+        assert.equal(destroyed, 1);
+    }
+});
+
 test("widget and firmware discovery share the model without mixing identities", async () => {
     const c = context();
     c.cfg.widgets = c.cfg.fwupd = true;

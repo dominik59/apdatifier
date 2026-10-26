@@ -7,7 +7,7 @@ widgets, and firmware updates.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE.md)
 <!-- coverage-badges:start -->
 [![Python coverage: 85.52%](https://img.shields.io/badge/Python%20coverage-85.52%25-brightgreen?style=flat)](#coverage)
-[![JavaScript lines: 94.61%](https://img.shields.io/badge/JavaScript%20lines-94.61%25-brightgreen?style=flat)](#coverage)
+[![JavaScript lines: 95.33%](https://img.shields.io/badge/JavaScript%20lines-95.33%25-brightgreen?style=flat)](#coverage)
 <!-- coverage-badges:end -->
 
 [Install](#installation) · [Update](#updating) · [Uninstall](#uninstalling) · [Coverage](#coverage)
@@ -131,9 +131,9 @@ Python checks: **PASSED**. JavaScript checks: **PASSED**.
 | Python: statements and branches | 85.52% | 80% | PASS |
 | Python: statements | 89.00% | Not gated | Not gated |
 | Python: branches | 77.89% | Not gated | Not gated |
-| JavaScript: lines | 94.61% | 80% | PASS |
-| JavaScript: branches | 75.52% | 70% | PASS |
-| JavaScript: functions | 91.33% | 70% | PASS |
+| JavaScript: lines | 95.33% | 80% | PASS |
+| JavaScript: branches | 76.00% | 70% | PASS |
+| JavaScript: functions | 91.88% | 70% | PASS |
 
 Measured scope: `package/contents/tools/backends.py` and `package/contents/tools/tools.js`.
 <!-- coverage-summary:end -->
