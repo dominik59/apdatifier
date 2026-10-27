@@ -282,6 +282,7 @@ function upgradingState() {
                     sts.errors = sts.errors.concat([{ code: 1, type: "transaction", message }])
                 }
                 reconcileInstalled()
+                setStatusBar()
                 if (wasUpgrading) sts.transactionId = ""
                 resumeScheduler()
             }

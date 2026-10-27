@@ -306,6 +306,39 @@ test("completed lifecycle states distinguish success, cancellation, partial fail
     }
 });
 
+test("completed upgrades refresh the status text and icon when installed packages leave the cache unchanged", () => {
+    for (const pending of [false, true]) {
+        const c = nativeContext();
+        c.cfg.checkMode = "interval";
+        c.cache = c.keys(pending ? [{ backend: "apt", uid: "apt:example:amd64", nativeId: "example:amd64",
+                                    NM: "example", VO: "1", VN: "2" }] : []);
+        c.refreshListModel();
+        const previousCache = JSON.stringify(c.cache);
+        c.sts.transactionId = "completed";
+        c.sts.busy = c.sts.upgrading = true;
+        c.sts.statusMsg = "Upgrade in progress...";
+        c.sts.statusIco = "akonadiconsole";
+        c.upgradeTimer.start();
+        c.execute = (command, callback) => {
+            if (command.includes("'lifecycle' 'state'")) {
+                callback(command, JSON.stringify({ id: "completed", status: "ok" }), "", 0);
+            } else if (command.includes("'installed'")) {
+                callback(command, JSON.stringify({
+                    items: c.cache.map(item => ({ uid: item.uid, installedVersion: item.VO })), errors: [],
+                }), "", 0);
+            } else assert.fail("Unexpected command: " + command);
+        };
+        c.upgradingState();
+        assert.equal(JSON.stringify(c.cache), previousCache);
+        assert.equal(c.sts.busy, false);
+        assert.equal(c.sts.upgrading, false);
+        assert.equal(c.upgradeTimer.running, false);
+        assert.equal(c.scheduler.running, true);
+        assert.equal(c.sts.statusMsg, pending ? "1 update is pending" : "");
+        assert.equal(c.sts.statusIco, pending ? "accept_time_event" : "");
+    }
+});
+
 test("legacy lifecycle fallback reconciles versions when system Python is unavailable", () => {
     const c = context();
     c.cache = c.keys([{ NM: "kept", VO: "1", VN: "2" }, { NM: "updated", VO: "1", VN: "2" }]);
