@@ -1437,3 +1437,103 @@ msgstr "Система оновлена"
 
 #~ msgid "Font bold"
 #~ msgstr "Жирний шрифт"
+
+#: ../contents/tools/backends.py
+msgid "Install"
+msgstr "Встановлення"
+
+#: ../contents/tools/backends.py
+msgid "Downgrade"
+msgstr "Пониження версії"
+
+#: ../contents/tools/backends.py
+msgid "Reinstall"
+msgstr "Перевстановлення"
+
+#: ../contents/tools/backends.py
+msgid "Configure"
+msgstr "Налаштування"
+
+#: ../contents/tools/backends.py
+msgid "including configuration files"
+msgstr "разом із файлами налаштувань"
+
+#: ../contents/tools/backends.py
+msgid "Optional cleanup"
+msgstr "Необов’язкове очищення"
+
+#: ../contents/tools/backends.py
+msgid "Candidate list unavailable"
+msgstr "Список пакунків недоступний"
+
+#: ../contents/tools/backends.py
+msgid "Not applicable"
+msgstr "Не застосовується"
+
+#: ../contents/tools/backends.py
+msgid "Deferred because of phasing"
+msgstr "Відкладені через поетапне поширення"
+
+#: ../contents/tools/backends.py
+msgid "Deferred updates"
+msgstr "Відкладені оновлення"
+
+#: ../contents/tools/backends.py
+msgid "Transaction total"
+msgstr "Загальна кількість пакунків в операції"
+
+#: ../contents/tools/backends.py
+msgid "No package operations are planned."
+msgstr "Операцій із пакунками не заплановано."
+
+#: ../contents/tools/backends.py
+msgid "APT messages"
+msgstr "Повідомлення APT"
+
+#: ../contents/tools/backends.py
+msgid "Run this APT operation?"
+msgstr "Виконати цю операцію APT?"
+
+#: ../contents/tools/backends.py
+msgid "The plan installs earlier package versions. Allow these version decreases?"
+msgstr "План передбачає встановлення попередніх версій пакунків. Дозволити пониження версій?"
+
+#: ../contents/tools/backends.py
+msgid "Packages that will receive an earlier version: "
+msgstr "Пакунки, для яких буде встановлено попередню версію: "
+
+#: ../contents/tools/backends.py
+msgid "An earlier version can need different dependencies. Continue?"
+msgstr "Попередня версія може потребувати інших залежностей. Продовжити?"
+
+#: ../contents/tools/backends.py
+msgid "The local file can install an earlier version. Continue?"
+msgstr "Локальний файл може встановити попередню версію. Продовжити?"
+
+#: ../contents/tools/backends.py
+msgid "Local package: "
+msgstr "Локальний пакунок: "
+
+#: ../contents/tools/backends.py
+msgid "This operation removes downloaded package archives."
+msgstr "Ця операція вилучає завантажені архіви пакунків."
+
+#: ../contents/tools/backends.py
+msgid "The APT transaction contains an unknown record."
+msgstr "Транзакція APT містить невідомий запис."
+
+#: ../contents/tools/backends.py
+msgid "Cannot compare the selected APT versions."
+msgstr "Не вдалося порівняти вибрані версії APT."
+
+#: ../contents/tools/backends.py
+msgid "APT did not identify the package architecture."
+msgstr "APT не визначив архітектуру пакунка."
+
+#: ../contents/tools/backends.py
+msgid "These packages will not be removed during this operation."
+msgstr "Ці пакунки не будуть вилучені під час цієї операції."
+
+#: ../contents/tools/backends.py
+msgid "You can remove them with a separate autoremove operation."
+msgstr "Їх можна вилучити окремим запуском autoremove."

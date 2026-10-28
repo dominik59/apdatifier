@@ -2050,3 +2050,63 @@ msgstr ""
 #: ../contents/ui/scrollview/Updates.qml
 msgid "Some update sources could not be checked"
 msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Install"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Downgrade"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Reinstall"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Configure"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "including configuration files"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Optional cleanup"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Candidate list unavailable"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Not applicable"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Deferred because of phasing"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Deferred updates"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "Transaction total"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "No package operations are planned."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "APT messages"
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "These packages will not be removed during this operation."
+msgstr ""
+
+#: ../contents/tools/backends.py
+msgid "You can remove them with a separate autoremove operation."
+msgstr ""

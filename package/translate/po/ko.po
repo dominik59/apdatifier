@@ -1530,3 +1530,103 @@ msgstr "시스템 업데이트됨"
 
 #~ msgid "Font bold"
 #~ msgstr "굵은 글꼴"
+
+#: ../contents/tools/backends.py
+msgid "Install"
+msgstr "설치"
+
+#: ../contents/tools/backends.py
+msgid "Downgrade"
+msgstr "다운그레이드"
+
+#: ../contents/tools/backends.py
+msgid "Reinstall"
+msgstr "다시 설치"
+
+#: ../contents/tools/backends.py
+msgid "Configure"
+msgstr "설정"
+
+#: ../contents/tools/backends.py
+msgid "including configuration files"
+msgstr "설정 파일 포함"
+
+#: ../contents/tools/backends.py
+msgid "Optional cleanup"
+msgstr "선택적 정리"
+
+#: ../contents/tools/backends.py
+msgid "Candidate list unavailable"
+msgstr "후보 패키지 목록을 사용할 수 없음"
+
+#: ../contents/tools/backends.py
+msgid "Not applicable"
+msgstr "해당 없음"
+
+#: ../contents/tools/backends.py
+msgid "Deferred because of phasing"
+msgstr "단계적 배포로 연기됨"
+
+#: ../contents/tools/backends.py
+msgid "Deferred updates"
+msgstr "연기된 업데이트"
+
+#: ../contents/tools/backends.py
+msgid "Transaction total"
+msgstr "작업 대상 패키지 합계"
+
+#: ../contents/tools/backends.py
+msgid "No package operations are planned."
+msgstr "예정된 패키지 작업이 없습니다."
+
+#: ../contents/tools/backends.py
+msgid "APT messages"
+msgstr "APT 메시지"
+
+#: ../contents/tools/backends.py
+msgid "Run this APT operation?"
+msgstr "이 APT 작업을 실행하시겠습니까?"
+
+#: ../contents/tools/backends.py
+msgid "The plan installs earlier package versions. Allow these version decreases?"
+msgstr "이 계획은 이전 버전의 패키지를 설치합니다. 다운그레이드를 허용하시겠습니까?"
+
+#: ../contents/tools/backends.py
+msgid "Packages that will receive an earlier version: "
+msgstr "이전 버전이 설치될 패키지: "
+
+#: ../contents/tools/backends.py
+msgid "An earlier version can need different dependencies. Continue?"
+msgstr "이전 버전에는 다른 의존성이 필요할 수 있습니다. 계속하시겠습니까?"
+
+#: ../contents/tools/backends.py
+msgid "The local file can install an earlier version. Continue?"
+msgstr "로컬 파일이 이전 버전을 설치할 수 있습니다. 계속하시겠습니까?"
+
+#: ../contents/tools/backends.py
+msgid "Local package: "
+msgstr "로컬 패키지: "
+
+#: ../contents/tools/backends.py
+msgid "This operation removes downloaded package archives."
+msgstr "이 작업은 다운로드한 패키지 압축 파일을 제거합니다."
+
+#: ../contents/tools/backends.py
+msgid "The APT transaction contains an unknown record."
+msgstr "APT 트랜잭션에 알 수 없는 레코드가 있습니다."
+
+#: ../contents/tools/backends.py
+msgid "Cannot compare the selected APT versions."
+msgstr "선택한 APT 버전을 비교할 수 없습니다."
+
+#: ../contents/tools/backends.py
+msgid "APT did not identify the package architecture."
+msgstr "APT가 패키지 아키텍처를 확인하지 못했습니다."
+
+#: ../contents/tools/backends.py
+msgid "These packages will not be removed during this operation."
+msgstr "이 작업에서는 이 패키지들을 제거하지 않습니다."
+
+#: ../contents/tools/backends.py
+msgid "You can remove them with a separate autoremove operation."
+msgstr "autoremove를 별도로 실행하여 제거할 수 있습니다."

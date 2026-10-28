@@ -1,0 +1,65 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Calculating upgrade...
+The following packages were automatically installed and are no longer required:
+  linux-headers-7.0.0-38 linux-headers-7.0.0-38-generic
+  linux-image-7.0.0-38-generic linux-main-modules-zfs-7.0.0-38-generic
+  linux-modules-7.0.0-38-generic linux-tools-7.0.0-38
+  linux-tools-7.0.0-38-generic
+Use 'sudo apt autoremove' to remove them.
+The following NEW packages will be installed:
+  linux-headers-7.0.0-42 linux-headers-7.0.0-42-generic
+  linux-image-7.0.0-42-generic
+  linux-main-modules-v4l2loopback-7.0.0-42-generic
+  linux-main-modules-zfs-7.0.0-42-generic linux-modules-7.0.0-42-generic
+  linux-tools-7.0.0-42 linux-tools-7.0.0-42-generic
+The following upgrades have been deferred due to phasing:
+  drkonqi gir1.2-mutter-18 libmutter-18-0 mutter-common mutter-common-bin
+  rtkit
+The following packages will be upgraded:
+  bpftool google-chrome-stable linux-generic linux-generic-hwe-24.04
+  linux-generic-hwe-26.04 linux-headers-generic
+  linux-headers-generic-hwe-26.04 linux-image-generic
+  linux-image-generic-hwe-26.04 linux-libc-dev linux-perf linux-tools-common
+12 upgraded, 8 newly installed, 0 to remove and 6 not upgraded.
+Inst google-chrome-stable [156.0.8078.47-1] (156.0.8078.73-1 Google:1.0/stable [amd64])
+Inst bpftool [7.7.0+7.0.0-38.38] (7.7.0+7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Inst linux-main-modules-zfs-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64]) []
+Inst linux-main-modules-v4l2loopback-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64]) []
+Inst linux-modules-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64]) []
+Inst linux-image-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Inst linux-generic [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64]) []
+Inst linux-image-generic [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64]) []
+Inst linux-headers-7.0.0-42 (7.0.0-42.42 Ubuntu:26.04/resolute-updates [all]) []
+Inst linux-headers-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64]) []
+Inst linux-headers-generic [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Inst linux-generic-hwe-26.04 [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64]) []
+Inst linux-image-generic-hwe-26.04 [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64]) []
+Inst linux-headers-generic-hwe-26.04 [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Inst linux-generic-hwe-24.04 [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Inst linux-libc-dev [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Inst linux-perf [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Inst linux-tools-common [7.0.0-38.38] (7.0.0-42.42 Ubuntu:26.04/resolute-updates [all])
+Inst linux-tools-7.0.0-42 (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Inst linux-tools-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf google-chrome-stable (156.0.8078.73-1 Google:1.0/stable [amd64])
+Conf bpftool (7.7.0+7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-main-modules-zfs-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-main-modules-v4l2loopback-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-modules-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-image-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-image-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-headers-7.0.0-42 (7.0.0-42.42 Ubuntu:26.04/resolute-updates [all])
+Conf linux-headers-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-headers-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-generic-hwe-26.04 (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-image-generic-hwe-26.04 (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-headers-generic-hwe-26.04 (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-generic-hwe-24.04 (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-libc-dev (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-perf (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-tools-common (7.0.0-42.42 Ubuntu:26.04/resolute-updates [all])
+Conf linux-tools-7.0.0-42 (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])
+Conf linux-tools-7.0.0-42-generic (7.0.0-42.42 Ubuntu:26.04/resolute-updates [amd64])

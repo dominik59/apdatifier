@@ -55,10 +55,10 @@ class BackendError(Exception):
         self.category, self.code = category, code
 
 
-def redact(text):
+def redact(text, limit=6000):
     text = re.sub(r"(https?://)[^/\s@]+@", r"\1[redacted]@", str(text))
     text = re.sub(r"(?im)(authorization|password|token)\s*[:=]\s*\S+", r"\1=[redacted]", text)
-    return text[-6000:]
+    return text[-limit:] if limit else text
 
 
 def now():
@@ -198,14 +198,14 @@ class Runner:
     def __init__(self, paths=None, token=""):
         self.paths, self.token = paths, token
 
-    def run(self, argv, *, timeout=300, foreground=False, capture=True, check=True):
+    def run(self, argv, *, timeout=300, foreground=False, capture=True, check=True, capture_stderr=False):
         env = dict(os.environ)
         if not foreground or capture:
             env.update(LC_ALL="C", LANGUAGE="C")
         process = subprocess.Popen(
             [str(part) for part in argv], env=env, text=True, errors="replace",
             stdout=subprocess.PIPE if capture else None,
-            stderr=subprocess.PIPE if capture and not foreground else None,
+            stderr=subprocess.PIPE if capture and (capture_stderr or not foreground) else None,
             start_new_session=not foreground,
         )
         deadline = time.monotonic() + timeout if timeout is not None else None
@@ -289,14 +289,20 @@ def package_description(record):
         (value for key, value in record.items() if key.startswith("Description-") and key != "Description-md5"), "")
 
 
-def parse_simulation(text, installed):
-    """Read Inst/Remv/Conf records, including repeated dependency annotations."""
-    changes = []
+def parse_simulation(text, installed, *, configure=False, package_data=None):
+    """Keep native operations distinct from candidate versions printed by Conf."""
+    changes, configurations = {}, {}
+    operations, configuration_records = [], []
+    configure_states = ("installed", "unpacked", "half-configured", "triggers-awaited", "triggers-pending")
+    package_data = installed if package_data is None else package_data
+    by_name = {}
+    for pkg in package_data.values():
+        by_name.setdefault(pkg["name"], []).append(pkg)
     for line in text.splitlines():
-        if not re.match(r"^(Inst|Remv|Conf)\s", line):
+        if not re.match(r"^(Inst|Remv|Purg|Conf)\b", line):
             continue
         match = re.fullmatch(
-            r"(Inst|Remv|Conf) ([a-z0-9][a-z0-9+.\-]*(?::[a-z0-9-]+)?)"
+            r"(Inst|Remv|Purg|Conf) ([a-z0-9][a-z0-9+.\-]*(?::[a-z0-9-]+)?)"
             r"(?: \[([^\]]+)\])?(?: \((.+)\))?(?: \[[^\]]*\])*", line,
         )
         if not match:
@@ -304,24 +310,252 @@ def parse_simulation(text, installed):
                                "invalid-output")
         action, identifier, old, details = match.groups()
         if action == "Conf":
+            if configure:
+                configuration_records.append(match.groups())
             continue
+        operations.append(match.groups())
+    install_selectors = {}
+    for action, identifier, old, details in operations + configuration_records:
+        native_selector = identifier
         arch_match = re.search(r"\[([a-z0-9-]+)\]$", details or "")
-        if ":" in identifier:
+        if action == "Conf" and native_selector in install_selectors:
+            name, arch = split_apt_id(install_selectors[native_selector])
+        elif ":" in identifier:
             name, arch = split_apt_id(identifier)
         else:
             name = identifier
-            matches = [pkg for pkg in installed.values() if pkg["name"] == name]
-            arch = arch_match.group(1) if arch_match else (matches[0]["architecture"] if len(matches) == 1 else "")
+            matches = by_name.get(name, [])
+            if action == "Conf":
+                matches = [pkg for pkg in matches if pkg.get("dpkgState") in configure_states]
+                arch = matches[0]["architecture"] if len(matches) == 1 else ""
+            else:
+                arch = arch_match.group(1) if arch_match else (matches[0]["architecture"] if len(matches) == 1 else "")
             if not arch:
                 raise BackendError(_("APT did not identify the package architecture."), "invalid-output")
         identifier = apt_selector(name, arch)
         candidate = details.split()[0] if details else ""
         if action == "Inst":
             validate(candidate, VERSION, "candidate version")
-        changes.append(dict(action=action, nativeId=identifier, name=name, architecture=arch,
-                            installedVersion=installed.get(identifier, {}).get("installedVersion", old or ""),
-                            candidateVersion=candidate, repository=(details or "").split(" ", 1)[-1]))
-    return changes
+        previous = installed.get(identifier, {}) if action == "Inst" else installed.get(
+            identifier, package_data.get(identifier, {}))
+        entry = dict(action=action, nativeId=identifier, name=name, architecture=arch,
+                     installedVersion=previous.get("installedVersion", old or ""),
+                     candidateVersion=candidate, repository=(details or "").split(" ", 1)[-1])
+        destination = configurations if action == "Conf" else changes
+        if identifier in destination and destination[identifier] != entry:
+            raise BackendError(_("The APT transaction contains an unknown record."), "invalid-output")
+        destination[identifier] = entry
+        if action == "Inst":
+            if native_selector in install_selectors and install_selectors[native_selector] != identifier:
+                raise BackendError(_("The APT transaction contains an unknown record."), "invalid-output")
+            install_selectors[native_selector] = identifier
+    for identifier, entry in configurations.items():
+        if identifier in changes:
+            if changes[identifier]["action"] != "Inst":
+                raise BackendError(_("The APT transaction contains an unknown record."), "invalid-output")
+            continue
+        pkg = package_data.get(identifier, {})
+        if pkg.get("dpkgState") not in configure_states:
+            raise BackendError(_("The APT transaction contains an unknown record."), "invalid-output")
+        current = validate(pkg.get("installedVersion", ""), VERSION, "configured version")
+        entry.update(installedVersion=current, candidateVersion=current)
+        changes[identifier] = entry
+    return list(changes.values())
+
+
+APT_PREVIEW_OPTIONS = [
+    "-o", "quiet=0", "-o", "APT::Get::HideAutoRemove=false",
+    "-o", "APT::Get::Show-Versions=false", "-o", "APT::Get::List-Columns=false",
+    "-o", "APT::Color=false",
+]
+APT_INFORMATION = {
+    "The following package was automatically installed and is no longer required:": "autoremove",
+    "The following packages were automatically installed and are no longer required:": "autoremove",
+    "The following upgrade has been deferred due to phasing:": "phased",
+    "The following upgrades have been deferred due to phasing:": "phased",
+    "The following packages have been kept back:": "deferred",
+    "The following package has been kept back:": "deferred",
+    "Not upgrading yet due to phasing:": "phased",
+    "Not upgrading:": "deferred",
+}
+APT_PACKAGE_LISTS = {
+    "The following additional packages will be installed:", "The following NEW packages will be installed:",
+    "The following packages will be upgraded:", "The following packages will be DOWNGRADED:",
+    "The following packages will be REMOVED:", "The following packages will be reinstalled:",
+    "Installing:", "Installing dependencies:", "Upgrading:", "Downgrading:", "Removing:", "Reinstalling:",
+}
+
+
+def apt_information(text):
+    """Read optional lists without treating suppressed or unfamiliar output as zero."""
+    result = dict(autoremove=None, phased=[], deferred=[], diagnostics=[], summary=False, candidate_error=False,
+                  operation_count=None, removal_count=None)
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        kind = APT_INFORMATION.get(line)
+        if kind or line in APT_PACKAGE_LISTS:
+            heading = line
+            rows = []
+            index += 1
+            while index < len(lines) and lines[index].startswith("  "):
+                rows.append(lines[index])
+                index += 1
+            names = " ".join(rows).split()
+            valid = bool(names) and all(re.fullmatch(r"[a-z0-9][a-z0-9+.\-]+(?::[a-z0-9-]+)?", name.rstrip("*") if not kind else name) for name in names)
+            if kind == "autoremove" and (index == len(lines) or not re.fullmatch(
+                    r"Use '.+ autoremove' to remove (?:it|them)\.", lines[index])):
+                valid = False
+            if kind:
+                if valid and (kind != "autoremove" or result[kind] is None):
+                    result[kind] = list(dict.fromkeys([*(result[kind] or []), *names]))
+                else:
+                    if kind == "autoremove":
+                        result["candidate_error"] = True
+                    result["diagnostics"].extend([heading, *rows])
+            elif not valid:
+                result["diagnostics"].extend([heading, *rows])
+            continue
+        if re.fullmatch(r"\d+ upgraded, (?:\d+ (?:newly installed|reinstalled|downgraded|to remove)(?:, | and ))+\d+ not upgraded\.", line):
+            result["summary"] = True
+            counts = {label: int(count) for count, label in re.findall(
+                r"(\d+) (upgraded|newly installed|reinstalled|downgraded|to remove|not upgraded)", line)}
+            result["operation_count"] = sum(counts.get(label, 0) for label in ("upgraded", "newly installed", "reinstalled", "downgraded"))
+            result["removal_count"] = counts["to remove"]
+        elif re.match(r"^(?:Inst|Conf|Remv|Purg)\b", line):
+            pass
+        elif re.match(r"^(?:Reading package lists|Building dependency tree|Reading state information|Calculating upgrade)\.\.\.", line):
+            pass
+        elif re.fullmatch(r"Use '.+ autoremove' to remove (?:it|them)\.", line):
+            pass
+        elif line.strip():
+            result["diagnostics"].append(line)
+            if re.search(r"automatically installed.*no longer required|autoremove", line, re.I):
+                result["candidate_error"] = True
+        index += 1
+    return result
+
+
+def apt_candidate_rows(names, inventory):
+    by_name = {}
+    for pkg in inventory.values():
+        by_name.setdefault(pkg["name"], []).append(pkg)
+    rows = {}
+    for name in names:
+        matches = [inventory[name]] if name in inventory else by_name.get(name, [])
+        if len(matches) != 1:
+            return None
+        pkg = matches[0]
+        if not VERSION.fullmatch(pkg.get("installedVersion", "")):
+            return None
+        rows[pkg["nativeId"]] = pkg
+    return sorted(rows.values(), key=lambda pkg: (pkg["name"], pkg["architecture"]))
+
+
+def apt_version_order(candidate, current, runner):
+    if candidate == current:
+        return 0
+    for operator, order in (("gt", 1), ("lt", -1)):
+        result = runner.run(["/usr/bin/dpkg", "--compare-versions", candidate, operator, current], check=False)
+        if result.returncode == 0:
+            return order
+        if result.returncode != 1:
+            raise BackendError(_("Cannot compare the selected APT versions."), "invalid-output")
+    return 0
+
+
+def apt_operation_groups(changes, runner):
+    groups = {name: [] for name in ("install", "upgrade", "downgrade", "reinstall", "remove", "configure")}
+    comparisons = {}
+    for change in changes:
+        if change["action"] in ("Remv", "Purg"):
+            group = "remove"
+        elif change["action"] == "Conf":
+            group = "configure"
+        elif not change["installedVersion"]:
+            group = "install"
+        else:
+            pair = change["candidateVersion"], change["installedVersion"]
+            if pair not in comparisons:
+                comparisons[pair] = apt_version_order(*pair, runner)
+            order = comparisons[pair]
+            group = "upgrade" if order > 0 else "downgrade" if order < 0 else "reinstall"
+        groups[group].append(change)
+    for rows in groups.values():
+        rows.sort(key=lambda row: (row["name"], row["architecture"]))
+    return groups
+
+
+def apt_preview_policy(installed, pins, settings, runner):
+    """Only verified APT 3.2.0 output can establish zero from an absent section."""
+    versions = [pkg["installedVersion"] for pkg in installed.values() if pkg["name"] == "apt"]
+    supported = len(versions) == 1 and bool(re.fullmatch(r"(?:\d+:)?3\.2\.0(?:[-+].*)?", versions[0]))
+    if not supported:
+        return False
+    try:
+        config_result = administrator([
+            "/usr/bin/apt-config", *pins, *APT_PREVIEW_OPTIONS, "shell",
+            "AUTO", "APT::Get::AutomaticRemove", "BINARY_AUTO", "Binary::apt-get::APT::Get::AutomaticRemove",
+        ], settings, runner, capture=True, capture_stderr=True)
+        if config_result.stderr:
+            print(_("APT messages") + "\n" + redact(config_result.stderr, limit=None), file=sys.stderr)
+        values = dict(token.split("=", 1) for token in shlex.split(config_result.stdout))
+    except BackendError as error:
+        if error.category == "canceled":
+            raise
+        return False
+    except ValueError:
+        return False
+    value = values.get("BINARY_AUTO", values.get("AUTO", "false")).lower()
+    return value in ("false", "no", "0", "off")
+
+
+def print_apt_summary(groups, info, inventory, *, zero_verified=False, autoremove=False):
+    labels = dict(install=_("Install"), upgrade=_("Upgrade"), downgrade=_("Downgrade"),
+                  reinstall=_("Reinstall"), remove=_("Remove"), configure=_("Configure"))
+    for group, rows in groups.items():
+        print(f"{labels[group]} ({len(rows)})")
+        for row in rows:
+            identity, old, new = row["nativeId"], row["installedVersion"], row["candidateVersion"]
+            version = old if group in ("remove", "configure") else (old + " -> " + new if old else "-> " + new)
+            suffix = " (" + _("including configuration files") + ")" if row["action"] == "Purg" else ""
+            print(f"  {identity} {version}{suffix}")
+        if rows:
+            print()
+    phased = set(info["phased"])
+    for label, names in ((_("Deferred because of phasing"), phased),
+                         (_("Deferred updates"), set(info["deferred"]) - phased)):
+        if names:
+            print(f"\n{label} ({len(names)})")
+            for name in sorted(names):
+                print("  " + name)
+    removed = {row["nativeId"] for row in groups["remove"]}
+    candidates = None
+    if info["autoremove"] is not None and not info["candidate_error"]:
+        candidates = apt_candidate_rows(info["autoremove"], inventory)
+    elif zero_verified and info["summary"] and not info["candidate_error"] and not autoremove:
+        candidates = []
+    if candidates is not None:
+        candidates = [row for row in candidates if row["nativeId"] not in removed]
+    status = (_("Not applicable") if autoremove and info["autoremove"] is None else
+              _("Candidate list unavailable") if candidates is None else str(len(candidates)))
+    print("\n" + _("Optional cleanup") + ": " + status)
+    if candidates:
+        print(_("These packages will not be removed during this operation."))
+        print(_("You can remove them with a separate autoremove operation."))
+    for row in candidates or []:
+        print("  " + row["nativeId"] + " " + row["installedVersion"])
+    total = len({row["nativeId"] for rows in groups.values() for row in rows})
+    print("\n" + _("Transaction total") + ": " + str(total))
+    print(", ".join(labels[group] + ": " + str(len(rows)) for group, rows in groups.items()))
+    print(_("Deferred updates") + ": " + str(len(phased | set(info["deferred"]))))
+    print(_("Optional cleanup") + ": " + status)
+    if not total:
+        print(_("No package operations are planned."))
+    if info["diagnostics"]:
+        print("\n" + _("APT messages"))
+        print(redact("\n".join(info["diagnostics"]), limit=None))
 
 
 def package_record(backend, identifier, name, installed="", candidate="", **fields):
@@ -347,7 +581,7 @@ class AptBackend:
         if neon and self.mode != "full":
             raise BackendError(_("KDE neon requires full upgrade mode."), "invalid-input")
 
-    def installed(self):
+    def package_states(self):
         text = self.runner.run([
             "/usr/bin/dpkg-query", "-W",
             "-f=${Package}\t${Architecture}\t${Version}\t${db:Status-Status}\n",
@@ -358,12 +592,16 @@ class AptBackend:
             if len(parts) != 4:
                 raise BackendError(_("dpkg returned an unknown record."), "invalid-output")
             name, arch, version, state = parts
-            if state != "installed":
+            if state == "not-installed":
                 continue
             identifier = apt_selector(name, arch)
             validate(version, VERSION, "installed version")
-            result[identifier] = package_record("apt", identifier, name, version, architecture=arch)
+            result[identifier] = package_record("apt", identifier, name, version, architecture=arch, dpkgState=state)
         return result
+
+    def installed(self):
+        return {identifier: {key: value for key, value in pkg.items() if key != "dpkgState"}
+                for identifier, pkg in self.package_states().items() if pkg["dpkgState"] == "installed"}
 
     def marks(self, action):
         return set(self.runner.run(["/usr/bin/apt-mark", action]).stdout.split())
@@ -562,7 +800,7 @@ class AptBackend:
         if any(change["nativeId"] in excluded for change in changes):
             raise BackendError(_("APT cannot keep an excluded package unchanged."), "blocked")
         if self.mode == "safe" and action in ("upgrade", "upgrade-package", "install", "install-version", "local-install"):
-            if any(change["action"] == "Remv" for change in changes):
+            if any(change["action"] in ("Remv", "Purg") for change in changes):
                 raise BackendError(_("Safe mode does not permit package removals."), "blocked")
         return result.stdout, changes
 
@@ -767,7 +1005,7 @@ def confirm(message):
         raise BackendError(_("The operation was canceled."), "canceled", 130)
 
 
-def administrator(argv, settings, runner, *, capture=False):
+def administrator(argv, settings, runner, *, capture=False, capture_stderr=False):
     prefix = shlex.split(settings.get("sudoBin", "sudo"))
     if not prefix:
         raise BackendError(_("No administrator command is configured."), "dependency-missing")
@@ -778,13 +1016,14 @@ def administrator(argv, settings, runner, *, capture=False):
     # Do not print captured configuration (for example Snap proxy credentials).
     if not capture:
         print(shlex.join(command), flush=True)
-    return runner.run(command, foreground=True, capture=capture, timeout=None)
+    options = {"capture_stderr": True} if capture_stderr else {}
+    return runner.run(command, foreground=True, capture=capture, timeout=None, **options)
 
 
 def assert_plan(changes, excluded, safe):
     if any(change["nativeId"] in excluded for change in changes):
         raise BackendError(_("The transaction changes an excluded package."), "blocked")
-    if safe and any(change["action"] == "Remv" for change in changes):
+    if safe and any(change["action"] in ("Remv", "Purg") for change in changes):
         raise BackendError(_("Safe mode does not permit package removals."), "blocked")
 
 
@@ -825,7 +1064,20 @@ def apt_foreground(paths, action, values, runner=None):
     if action in ("upgrade", "upgrade-package", "install", "install-version", "local-install"):
         administrator(["/usr/bin/apt-get", "--error-on=any", "update"], settings, runner)
     installed = backend.installed()
-    if action in ("remove", "purge", "upgrade-package") and any(value not in installed for value in values):
+    inventory = dict(installed)
+    states_read = False
+
+    def current_states():
+        nonlocal states_read
+        if not states_read:
+            inventory.update(backend.package_states())
+            states_read = True
+        return inventory
+
+    if action == "purge" and any(value not in installed for value in values):
+        current_states()
+    selected = inventory if action == "purge" else installed
+    if action in ("remove", "purge", "upgrade-package") and any(value not in selected for value in values):
         raise BackendError(_("A selected package is no longer installed."), "invalid-input")
     if action in ("install", "install-version"):
         records = backend.metadata(values)
@@ -843,33 +1095,47 @@ def apt_foreground(paths, action, values, runner=None):
                 raise BackendError(_("A selected package has a native hold."), "blocked")
             # Explicit install requests can bypass native phasing. Require native
             # bulk eligibility before performing an individual upgrade.
-            eligible_text = administrator(
-                ["/usr/bin/apt-get", *pins, "--simulate", *backend.command()], settings, runner, capture=True,
-            ).stdout
-            eligible = {entry["nativeId"] for entry in parse_simulation(eligible_text, installed)
+            eligibility = administrator(
+                ["/usr/bin/apt-get", *pins, "--simulate", *backend.command()], settings, runner,
+                capture=True, capture_stderr=True,
+            )
+            if eligibility.stderr:
+                print(_("APT messages") + "\n" + redact(eligibility.stderr, limit=None), file=sys.stderr)
+            eligible = {entry["nativeId"] for entry in parse_simulation(eligibility.stdout, installed)
                         if entry["action"] == "Inst"}
             if not set(values) <= eligible:
                 raise BackendError(_("APT did not select this update under the current policy."), "blocked")
         args = backend.command(action, values)
         if action not in ("clean", "autoclean"):
-            preview = administrator(
-                ["/usr/bin/apt-get", *pins, "--simulate", *args], settings, runner, capture=True,
-            ).stdout
-            changes = parse_simulation(preview, installed)
+            preview_result = administrator(
+                ["/usr/bin/apt-get", *pins, *APT_PREVIEW_OPTIONS, "--simulate", *args], settings, runner,
+                capture=True, capture_stderr=True,
+            )
+            preview = preview_result.stdout
+            inst_names = set(re.findall(r"^Inst (\S+)", preview, re.M))
+            if any(kind == "Purg" or name not in inst_names
+                   for kind, name in re.findall(r"^(Purg|Conf) (\S+)", preview, re.M)):
+                current_states()
+            changes = parse_simulation(preview, installed, configure=True, package_data=inventory)
             assert_plan(changes, excluded, "--no-remove" in args)
-            print(redact(preview))
-            decreases = []
-            for change in changes:
-                if change["action"] != "Inst" or not change["installedVersion"]:
-                    continue
-                comparison = runner.run([
-                    "/usr/bin/dpkg", "--compare-versions", change["candidateVersion"],
-                    "lt", change["installedVersion"],
-                ], check=False)
-                if comparison.returncode == 0:
-                    decreases.append(change["nativeId"])
-                elif comparison.returncode != 1:
-                    raise BackendError(_("Cannot compare the selected APT versions."), "invalid-output")
+            groups = apt_operation_groups(changes, runner)
+            info = apt_information(preview)
+            info["diagnostics"].extend(preview_result.stderr.splitlines())
+            if info["summary"] and (info["operation_count"] != sum(len(groups[key]) for key in
+                    ("install", "upgrade", "downgrade", "reinstall")) or info["removal_count"] != len(groups["remove"])):
+                raise BackendError(_("The APT transaction contains an unknown record."), "invalid-output")
+            if info["autoremove"] and apt_candidate_rows(info["autoremove"], inventory) is None:
+                try:
+                    current_states()
+                except BackendError as error:
+                    if error.category == "canceled":
+                        raise
+                    info["candidate_error"] = True
+                    info["diagnostics"].append(str(error))
+            zero_verified = (info["autoremove"] is None and not info["candidate_error"] and info["summary"]
+                             and action != "autoremove" and apt_preview_policy(installed, pins, settings, runner))
+            print_apt_summary(groups, info, inventory, zero_verified=zero_verified, autoremove=action == "autoremove")
+            decreases = [change["nativeId"] for change in groups["downgrade"]]
             if decreases:
                 print(_("Packages that will receive an earlier version: ") + ", ".join(decreases))
                 confirm(_("The plan installs earlier package versions. Allow these version decreases?"))

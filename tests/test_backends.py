@@ -23,6 +23,8 @@ SPEC = importlib.util.spec_from_file_location(
     "backends", Path(__file__).resolve().parents[1] / "package/contents/tools/backends.py")
 b = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(b)
+# Native fixtures use C output; language-specific tests install their own catalog.
+b._ = lambda message: message
 INSTALLED = {
     "example:amd64": b.package_record("apt", "example:amd64", "example", "1.0-1", architecture="amd64"),
     "other:amd64": b.package_record("apt", "other:amd64", "other", "1", architecture="amd64"),
@@ -209,7 +211,11 @@ class AptPlanTests(TemporaryCase):
     @mock.patch.object(b.AptBackend, "installed", return_value=INSTALLED)
     def test_a_native_policy_downgrade_needs_explicit_consent(self, installed, confirm):
         preview = "Inst example [1.0-1] (0.9-1 Ubuntu:stable [amd64])\n"
-        self.runner.run.side_effect = lambda argv, **kw: completed(argv, preview if "--simulate" in argv else "")
+        def run(argv, **kwargs):
+            if "--compare-versions" in argv:
+                return subprocess.run(argv, capture_output=True, text=True, check=False)
+            return completed(argv, preview if "--simulate" in argv else "")
+        self.runner.run.side_effect = run
         with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(b.BackendError):
             b.apt_foreground(self.paths, "upgrade", [], self.runner)
         confirm.assert_called_once_with("The plan installs earlier package versions. Allow these version decreases?")

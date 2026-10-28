@@ -1510,3 +1510,103 @@ msgstr "系统已更新"
 
 #~ msgid "Font bold"
 #~ msgstr "字体加粗"
+
+#: ../contents/tools/backends.py
+msgid "Install"
+msgstr "安装"
+
+#: ../contents/tools/backends.py
+msgid "Downgrade"
+msgstr "降级"
+
+#: ../contents/tools/backends.py
+msgid "Reinstall"
+msgstr "重新安装"
+
+#: ../contents/tools/backends.py
+msgid "Configure"
+msgstr "配置"
+
+#: ../contents/tools/backends.py
+msgid "including configuration files"
+msgstr "包括配置文件"
+
+#: ../contents/tools/backends.py
+msgid "Optional cleanup"
+msgstr "可选清理"
+
+#: ../contents/tools/backends.py
+msgid "Candidate list unavailable"
+msgstr "候选软件包列表不可用"
+
+#: ../contents/tools/backends.py
+msgid "Not applicable"
+msgstr "不适用"
+
+#: ../contents/tools/backends.py
+msgid "Deferred because of phasing"
+msgstr "因分阶段发布而推迟"
+
+#: ../contents/tools/backends.py
+msgid "Deferred updates"
+msgstr "推迟的更新"
+
+#: ../contents/tools/backends.py
+msgid "Transaction total"
+msgstr "操作涉及的软件包总数"
+
+#: ../contents/tools/backends.py
+msgid "No package operations are planned."
+msgstr "没有计划的软件包操作。"
+
+#: ../contents/tools/backends.py
+msgid "APT messages"
+msgstr "APT 消息"
+
+#: ../contents/tools/backends.py
+msgid "Run this APT operation?"
+msgstr "执行此 APT 操作吗？"
+
+#: ../contents/tools/backends.py
+msgid "The plan installs earlier package versions. Allow these version decreases?"
+msgstr "此计划将安装较早版本的软件包。允许降级吗？"
+
+#: ../contents/tools/backends.py
+msgid "Packages that will receive an earlier version: "
+msgstr "将安装较早版本的软件包："
+
+#: ../contents/tools/backends.py
+msgid "An earlier version can need different dependencies. Continue?"
+msgstr "较早版本可能需要不同的依赖项。继续吗？"
+
+#: ../contents/tools/backends.py
+msgid "The local file can install an earlier version. Continue?"
+msgstr "本地文件可能安装较早版本。继续吗？"
+
+#: ../contents/tools/backends.py
+msgid "Local package: "
+msgstr "本地软件包："
+
+#: ../contents/tools/backends.py
+msgid "This operation removes downloaded package archives."
+msgstr "此操作将移除已下载的软件包归档。"
+
+#: ../contents/tools/backends.py
+msgid "The APT transaction contains an unknown record."
+msgstr "APT 事务包含未知记录。"
+
+#: ../contents/tools/backends.py
+msgid "Cannot compare the selected APT versions."
+msgstr "无法比较所选的 APT 版本。"
+
+#: ../contents/tools/backends.py
+msgid "APT did not identify the package architecture."
+msgstr "APT 未能确定软件包架构。"
+
+#: ../contents/tools/backends.py
+msgid "These packages will not be removed during this operation."
+msgstr "这些软件包不会在本次操作中移除。"
+
+#: ../contents/tools/backends.py
+msgid "You can remove them with a separate autoremove operation."
+msgstr "您可以单独运行 autoremove 来移除它们。"

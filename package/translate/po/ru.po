@@ -1569,3 +1569,103 @@ msgstr "Система обновлена"
 
 #~ msgid "Font bold"
 #~ msgstr "Жирный шрифт"
+
+#: ../contents/tools/backends.py
+msgid "Install"
+msgstr "Установка"
+
+#: ../contents/tools/backends.py
+msgid "Downgrade"
+msgstr "Понижение версии"
+
+#: ../contents/tools/backends.py
+msgid "Reinstall"
+msgstr "Переустановка"
+
+#: ../contents/tools/backends.py
+msgid "Configure"
+msgstr "Настройка"
+
+#: ../contents/tools/backends.py
+msgid "including configuration files"
+msgstr "включая файлы настройки"
+
+#: ../contents/tools/backends.py
+msgid "Optional cleanup"
+msgstr "Необязательная очистка"
+
+#: ../contents/tools/backends.py
+msgid "Candidate list unavailable"
+msgstr "Список пакетов недоступен"
+
+#: ../contents/tools/backends.py
+msgid "Not applicable"
+msgstr "Неприменимо"
+
+#: ../contents/tools/backends.py
+msgid "Deferred because of phasing"
+msgstr "Отложены из-за поэтапного распространения"
+
+#: ../contents/tools/backends.py
+msgid "Deferred updates"
+msgstr "Отложенные обновления"
+
+#: ../contents/tools/backends.py
+msgid "Transaction total"
+msgstr "Всего пакетов в операции"
+
+#: ../contents/tools/backends.py
+msgid "No package operations are planned."
+msgstr "Операции с пакетами не запланированы."
+
+#: ../contents/tools/backends.py
+msgid "APT messages"
+msgstr "Сообщения APT"
+
+#: ../contents/tools/backends.py
+msgid "Run this APT operation?"
+msgstr "Выполнить эту операцию APT?"
+
+#: ../contents/tools/backends.py
+msgid "The plan installs earlier package versions. Allow these version decreases?"
+msgstr "План предусматривает установку более ранних версий пакетов. Разрешить понижение версий?"
+
+#: ../contents/tools/backends.py
+msgid "Packages that will receive an earlier version: "
+msgstr "Пакеты, для которых будет установлена более ранняя версия: "
+
+#: ../contents/tools/backends.py
+msgid "An earlier version can need different dependencies. Continue?"
+msgstr "Более ранней версии могут потребоваться другие зависимости. Продолжить?"
+
+#: ../contents/tools/backends.py
+msgid "The local file can install an earlier version. Continue?"
+msgstr "Локальный файл может установить более раннюю версию. Продолжить?"
+
+#: ../contents/tools/backends.py
+msgid "Local package: "
+msgstr "Локальный пакет: "
+
+#: ../contents/tools/backends.py
+msgid "This operation removes downloaded package archives."
+msgstr "Эта операция удаляет загруженные архивы пакетов."
+
+#: ../contents/tools/backends.py
+msgid "The APT transaction contains an unknown record."
+msgstr "Транзакция APT содержит неизвестную запись."
+
+#: ../contents/tools/backends.py
+msgid "Cannot compare the selected APT versions."
+msgstr "Не удалось сравнить выбранные версии APT."
+
+#: ../contents/tools/backends.py
+msgid "APT did not identify the package architecture."
+msgstr "APT не определил архитектуру пакета."
+
+#: ../contents/tools/backends.py
+msgid "These packages will not be removed during this operation."
+msgstr "Эти пакеты не будут удалены во время этой операции."
+
+#: ../contents/tools/backends.py
+msgid "You can remove them with a separate autoremove operation."
+msgstr "Их можно удалить, отдельно запустив autoremove."
