@@ -6,8 +6,8 @@ widgets, and firmware updates.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE.md)
 <!-- coverage-badges:start -->
-[![Python coverage: 86.96%](https://img.shields.io/badge/Python%20coverage-86.96%25-brightgreen?style=flat)](#coverage)
-[![JavaScript lines: 95.33%](https://img.shields.io/badge/JavaScript%20lines-95.33%25-brightgreen?style=flat)](#coverage)
+[![Python coverage: 86.98%](https://img.shields.io/badge/Python%20coverage-86.98%25-brightgreen?style=flat)](#coverage)
+[![JavaScript lines: 95.38%](https://img.shields.io/badge/JavaScript%20lines-95.38%25-brightgreen?style=flat)](#coverage)
 [![Bash lines: 91.73%](https://img.shields.io/badge/Bash%20lines-91.73%25-brightgreen?style=flat)](#coverage)
 <!-- coverage-badges:end -->
 
@@ -131,12 +131,12 @@ Python checks: **PASSED**. JavaScript checks: **PASSED**. Bash measurement: **PA
 
 | Metric | Coverage | Minimum | Coverage gate |
 | --- | ---: | ---: | --- |
-| Python: statements and branches | 86.96% | 80% | PASS |
-| Python: statements | 89.71% | Not gated | Not gated |
-| Python: branches | 81.13% | Not gated | Not gated |
-| JavaScript: lines | 95.33% | 80% | PASS |
-| JavaScript: branches | 76.17% | 70% | PASS |
-| JavaScript: functions | 91.88% | 70% | PASS |
+| Python: statements and branches | 86.98% | 80% | PASS |
+| Python: statements | 89.73% | Not gated | Not gated |
+| Python: branches | 81.19% | Not gated | Not gated |
+| JavaScript: lines | 95.38% | 80% | PASS |
+| JavaScript: branches | 76.53% | 70% | PASS |
+| JavaScript: functions | 91.96% | 70% | PASS |
 | Bash: lines | 91.73% | 80% | PASS |
 
 Bash files meeting the 80% minimum: **9/9**.

@@ -215,6 +215,53 @@ class AptSummaryTests(TemporaryCase):
         self.assertEqual(calls[-1][-3:], ["--no-remove", "--with-new-pkgs", "upgrade"])
         confirm.assert_called_once_with("Run this APT operation?")
 
+    @mock.patch.object(b, "confirm")
+    @mock.patch.object(b, "apt_preview_policy", return_value=True)
+    @mock.patch.object(b.AptBackend, "installed", return_value=INSTALLED)
+    def test_empty_plans_finish_without_confirmation_or_execution(self, installed, policy, confirm):
+        previews = (
+            SUMMARY,
+            "The following upgrades have been deferred due to phasing:\n  drkonqi\n"
+            "0 upgraded, 0 newly installed, 0 to remove and 1 not upgraded.\n",
+            "The following package was automatically installed and is no longer required:\n  other\n"
+            "Use 'sudo apt autoremove' to remove it.\n" + SUMMARY,
+        )
+        for action in ("upgrade", "autoremove"):
+            for preview in previews:
+                with self.subTest(action=action, preview=preview):
+                    self.runner.reset_mock()
+                    confirm.reset_mock()
+                    self.runner.run.side_effect = lambda argv, **kw: completed(
+                        stdout=preview if "--simulate" in argv else "")
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        b.apt_foreground(self.paths, action, [], self.runner)
+                    confirm.assert_not_called()
+                    self.assertIn("Transaction total: 0", output.getvalue())
+                    self.assertIn("No package operations are planned.", output.getvalue())
+                    if "drkonqi" in preview:
+                        self.assertIn("Deferred because of phasing (1)\n  drkonqi", output.getvalue())
+                    if action == "upgrade" and "other" in preview:
+                        self.assertIn("Optional cleanup: 1", output.getvalue())
+                    commands = [call.args[0] for call in self.runner.run.call_args_list]
+                    executions = [argv for argv in commands if "/usr/bin/apt-get" in argv and "--simulate" not in argv]
+                    self.assertEqual(executions, [["sudo", "/usr/bin/apt-get", "--error-on=any", "update"]]
+                                     if action == "upgrade" else [])
+
+    @mock.patch.object(b, "confirm")
+    @mock.patch.object(b.AptBackend, "installed", return_value=INSTALLED)
+    def test_archive_cleanup_still_requires_confirmation_and_execution(self, installed, confirm):
+        for action in ("clean", "autoclean"):
+            with self.subTest(action=action):
+                self.runner.reset_mock()
+                confirm.reset_mock()
+                with contextlib.redirect_stdout(io.StringIO()):
+                    b.apt_foreground(self.paths, action, [], self.runner)
+                confirm.assert_called_once_with("Run this APT operation?")
+                commands = [call.args[0] for call in self.runner.run.call_args_list]
+                self.assertIn(["sudo", "/usr/bin/apt-get", action], commands)
+                self.assertFalse(any("--simulate" in argv for argv in commands))
+
     def test_comparison_failure_and_consent_prevent_execution(self):
         with self.assertRaises(b.BackendError):
             b.apt_version_order("2", "1", mock.Mock(run=lambda *a, **kw: completed(code=2)))
@@ -283,9 +330,11 @@ class AptSummaryTests(TemporaryCase):
                 self.runner.run.side_effect = lambda argv, **kw: completed(stdout=preview if '--simulate' in argv else '')
                 output = io.StringIO()
                 with mock.patch.object(b.AptBackend, 'package_states', return_value=pending) as states, \
-                        mock.patch.object(b, 'confirm'), contextlib.redirect_stdout(output):
+                        mock.patch.object(b, 'confirm') as confirm, contextlib.redirect_stdout(output):
                     b.apt_foreground(self.paths, 'upgrade', [], self.runner)
                 states.assert_called_once_with()
+                confirm.assert_called_once_with('Run this APT operation?')
+                self.assertNotIn('--simulate', self.runner.run.call_args.args[0])
                 self.assertIn('pending:amd64 1.0-1', output.getvalue())
                 self.assertNotIn('2.0-1', output.getvalue())
 

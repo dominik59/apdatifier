@@ -1667,6 +1667,16 @@ msgstr ""
 
 #: ../contents/tools/tools.js
 #, qt-format
+msgid "Package operation canceled (exit code: %1)."
+msgstr ""
+
+#: ../contents/tools/tools.js
+#, qt-format
+msgid "Package operation failed (exit code: %1)."
+msgstr ""
+
+#: ../contents/tools/tools.js
+#, qt-format
 msgid "Package operation result: %1"
 msgstr ""
 
@@ -1690,7 +1700,7 @@ msgstr ""
 msgid "Restart the system now?"
 msgstr ""
 
-#: ../contents/tools/sh/messages
+#: ../contents/tools/sh/messages ../contents/tools/tools.js
 msgid "Review the operation results in the terminal"
 msgstr ""
 

@@ -278,8 +278,21 @@ function upgradingState() {
                 sts.busy = sts.upgrading = false
                 upgradeTimer.stop()
                 if (state.id === sts.transactionId && ["error", "partial", "canceled", "unknown"].includes(state.status)) {
-                    const message = state.message || i18n("Package operation result: %1", state.status)
-                    sts.errors = sts.errors.concat([{ code: 1, type: "transaction", message }])
+                    const failedStages = Array.isArray(state.stages) ? state.stages.filter(stage =>
+                        stage && typeof stage.code === "number" && stage.code !== 0) : []
+                    if (failedStages.length && state.status !== "unknown") {
+                        sts.errors = sts.errors.concat(failedStages.map(stage => ({
+                            code: stage.code,
+                            type: stage.backend || "transaction",
+                            message: (stage.code === 130
+                                ? i18n("Package operation canceled (exit code: %1).", stage.code)
+                                : i18n("Package operation failed (exit code: %1).", stage.code)) + "\n" +
+                                i18n("Review the operation results in the terminal")
+                        })))
+                    } else {
+                        const message = state.message || i18n("Package operation result: %1", state.status)
+                        sts.errors = sts.errors.concat([{ code: 1, type: "transaction", message }])
+                    }
                 }
                 reconcileInstalled()
                 setStatusBar()

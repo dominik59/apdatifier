@@ -1135,6 +1135,8 @@ def apt_foreground(paths, action, values, runner=None):
             zero_verified = (info["autoremove"] is None and not info["candidate_error"] and info["summary"]
                              and action != "autoremove" and apt_preview_policy(installed, pins, settings, runner))
             print_apt_summary(groups, info, inventory, zero_verified=zero_verified, autoremove=action == "autoremove")
+            if not any(groups.values()):
+                return
             decreases = [change["nativeId"] for change in groups["downgrade"]]
             if decreases:
                 print(_("Packages that will receive an earlier version: ") + ", ".join(decreases))

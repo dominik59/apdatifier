@@ -306,6 +306,63 @@ test("completed lifecycle states distinguish success, cancellation, partial fail
     }
 });
 
+test("a partial upgrade identifies the failed Flatpak stage and its actual exit code", () => {
+    const c = nativeContext();
+    c.sts.transactionId = "completed";
+    c.sts.upgrading = true;
+    c.reconcileInstalled = () => {};
+    const state = { id: "completed", status: "partial", stages: [
+        { backend: "apt", code: 0, status: "ok" },
+        { backend: "snap", code: 0, status: "ok" },
+        { backend: "flatpak", code: 1, status: "error" },
+        { backend: "widgets", code: 0, status: "ok" },
+        { backend: "fwupd", code: 0, status: "ok" },
+    ] };
+    c.execute = (command, callback) => callback(command, JSON.stringify(state), "", 0);
+    c.upgradingState();
+    assert.deepEqual(plain(c.sts.errors), [{
+        code: 1, type: "flatpak",
+        message: "Package operation failed (exit code: 1).\nReview the operation results in the terminal",
+    }]);
+    assert.equal(c.sts.transactionId, "");
+    c.upgradingState();
+    assert.equal(c.sts.errors.length, 1);
+});
+
+test("transaction errors retain every failed stage and distinguish cancellation", () => {
+    const c = nativeContext();
+    c.sts.transactionId = "completed";
+    c.sts.upgrading = true;
+    c.reconcileInstalled = () => {};
+    const state = { id: "completed", status: "canceled", stages: [
+        { backend: "pre-script", code: 7, status: "error" },
+        { backend: "apt", code: 100, status: "error" },
+        { backend: "snap", code: 130, status: "canceled" },
+        { backend: "post-script", code: 0, status: "ok" },
+    ] };
+    c.execute = (command, callback) => callback(command, JSON.stringify(state), "", 0);
+    c.upgradingState();
+    assert.deepEqual(plain(c.sts.errors.map(error => [error.type, error.code])), [
+        ["pre-script", 7], ["apt", 100], ["snap", 130],
+    ]);
+    assert.match(c.sts.errors[0].message, /failed \(exit code: 7\)/);
+    assert.match(c.sts.errors[1].message, /failed \(exit code: 100\)/);
+    assert.match(c.sts.errors[2].message, /canceled \(exit code: 130\)/);
+});
+
+test("unknown transaction outcomes keep the process diagnostic even after a failed stage", () => {
+    const c = nativeContext();
+    c.sts.transactionId = "interrupted";
+    c.sts.upgrading = true;
+    c.reconcileInstalled = () => {};
+    const state = { id: "interrupted", status: "unknown",
+        message: "The terminal process ended without a transaction result.",
+        stages: [{ backend: "flatpak", code: 1, status: "error" }] };
+    c.execute = (command, callback) => callback(command, JSON.stringify(state), "", 0);
+    c.upgradingState();
+    assert.deepEqual(plain(c.sts.errors), [{ code: 1, type: "transaction", message: state.message }]);
+});
+
 test("completed upgrades refresh the status text and icon when installed packages leave the cache unchanged", () => {
     for (const pending of [false, true]) {
         const c = nativeContext();
